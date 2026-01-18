@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Search, Filter, Navigation, Compass, X, AlertCircle, Zap, Map } from 'lucide-react';
+import { MapPin, Search, Filter, Navigation, Compass, X, AlertCircle, Zap, Map as MapIcon } from 'lucide-react';
 import { Badge, Card } from '../components/UI';
 import { Link } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
@@ -798,7 +798,7 @@ export const MapScreen: React.FC = () => {
             <Card className="p-4 !bg-black/95 !backdrop-blur-3xl !border-white/20 shadow-2xl">
               <div className="flex items-start gap-3">
                 <div className="p-2.5 rounded-xl bg-blue-500/20 border border-blue-500/30">
-                  <Map size={18} color={theme.accent} />
+                  <MapIcon size={18} color={theme.accent} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="text-xs font-black uppercase italic tracking-tighter mb-1 text-white">
