@@ -306,23 +306,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loadUserProfile = async (userId: string) => {
     // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:192',message:'loadUserProfile started',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:263',message:'loadUserProfile started',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
     // #endregion
     try {
-      // Fetch profile and auth user in parallel for better performance
-      const [profileResult, authResult] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
-          .eq('id', userId)
-          .maybeSingle(),
-        supabase.auth.getUser()
-      ]);
+      // Fetch profile and auth user in parallel with timeout
+      const profileQuery = supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      const authQuery = supabase.auth.getUser();
+      
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:275',message:'loadUserProfile Promise.all timeout',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          reject(new Error('Profile fetch timeout'));
+        }, 2000);
+      });
+      
+      let profileResult, authResult;
+      try {
+        [profileResult, authResult] = await Promise.race([
+          Promise.all([profileQuery, authQuery]),
+          timeoutPromise
+        ]) as [any, any];
+      } catch (timeoutError) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:320',message:'Promise.all timed out, using fallback',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        // On timeout, try to get auth user at least (profile might not exist yet)
+        try {
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          if (authUser) {
+            // Create minimal user from auth data
+            const minimalUser: User = {
+              id: authUser.id,
+              username: authUser.user_metadata?.username || `user_${authUser.id.substring(0, 8)}`,
+              displayName: authUser.user_metadata?.display_name || authUser.email?.split('@')[0] || 'User',
+              avatarUrl: authUser.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.id}`,
+              bio: '',
+              socials: {},
+              interests: [],
+              homeCity: '',
+              travelCities: [],
+              profileMode: 'full',
+              organizerTier: 'none',
+              verified: false,
+              createdAt: authUser.created_at || new Date().toISOString(),
+            };
+            setUser(minimalUser);
+            setIsLoadingUser(false);
+            return;
+          }
+        } catch (e) {
+          // Even auth user fetch failed
+        }
+        setIsLoadingUser(false);
+        return;
+      }
 
       const { data: profile, error } = profileResult;
       const { data: { user: authUser }, error: authError } = authResult;
       // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:204',message:'Profile and auth fetched',data:{hasProfile:!!profile,hasError:!!error,hasAuthUser:!!authUser,hasAuthError:!!authError},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:350',message:'Profile and auth fetched',data:{hasProfile:!!profile,hasError:!!error,hasAuthUser:!!authUser,hasAuthError:!!authError},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
 
       // If auth user fetch failed, we can't proceed
