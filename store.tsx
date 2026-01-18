@@ -126,18 +126,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Initialize auth state and load user
   useEffect(() => {
+    let mounted = true;
+
     // Check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        loadUserProfile(session.user.id);
-      } else {
-        setIsLoadingUser(false);
+      if (mounted) {
+        if (session?.user) {
+          loadUserProfile(session.user.id);
+        } else {
+          setIsLoadingUser(false);
+        }
       }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      
       if (session?.user) {
+        // Always load profile on auth state change to ensure it's up to date
         await loadUserProfile(session.user.id);
       } else {
         setUser(null);
@@ -146,36 +153,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
   const loadUserProfile = async (userId: string) => {
     try {
-      // Use specific column selection instead of '*' to avoid 406 errors
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
-        .eq('id', userId)
-        .maybeSingle();
+      // Fetch profile and auth user in parallel for better performance
+      const [profileResult, authResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
+          .eq('id', userId)
+          .maybeSingle(),
+        supabase.auth.getUser()
+      ]);
+
+      const { data: profile, error } = profileResult;
+      const { data: { user: authUser } } = authResult;
 
       if (error) {
-        // If profile doesn't exist yet (trigger might not have run), wait and retry once
+        // If profile doesn't exist yet (trigger might not have run), retry once quickly
         if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
-          console.log('Profile not found, waiting for trigger to create it...');
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          const { data: retryProfile, error: retryError } = await supabase
+          // Only retry once with a shorter delay
+          await new Promise(resolve => setTimeout(resolve, 300));
+          const { data: retryProfile } = await supabase
             .from('profiles')
             .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
             .eq('id', userId)
             .maybeSingle();
           
-          if (retryProfile && !retryError) {
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (authUser) {
-              const appUser = convertProfileToUser(retryProfile, authUser);
-              setUser(appUser);
-            }
+          if (retryProfile && authUser) {
+            const appUser = convertProfileToUser(retryProfile, authUser);
+            setUser(appUser);
+            setIsLoadingUser(false);
             return;
           }
         }
@@ -183,12 +195,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Profile fetch error (non-critical):', error);
       }
 
-      if (profile) {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser) {
-          const appUser = convertProfileToUser(profile, authUser);
-          setUser(appUser);
-        }
+      if (profile && authUser) {
+        const appUser = convertProfileToUser(profile, authUser);
+        setUser(appUser);
+      } else if (authUser && !profile) {
+        // Profile doesn't exist yet but user is authenticated
+        // Create a minimal user object to allow navigation
+        // The trigger will create the profile, and it will be picked up on next load
+        const minimalUser: User = {
+          id: authUser.id,
+          username: authUser.user_metadata?.username || `user_${authUser.id.substring(0, 8)}`,
+          displayName: authUser.user_metadata?.display_name || authUser.email?.split('@')[0] || 'User',
+          avatarUrl: authUser.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.id}`,
+          bio: '',
+          socials: {},
+          interests: [],
+          homeCity: '',
+          travelCities: [],
+          profileMode: 'full',
+          organizerTier: 'none',
+          verified: false,
+          createdAt: authUser.created_at || new Date().toISOString(),
+        };
+        setUser(minimalUser);
       }
     } catch (error) {
       console.error('Failed to load user profile:', error);
@@ -200,11 +229,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const login = async () => {
     // Login is handled by the Login screen via Supabase Auth
-    // This function is kept for compatibility but will trigger profile reload
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      await loadUserProfile(session.user.id);
-    }
+    // The auth state change handler will automatically load the profile
+    // This function is kept for compatibility but is now a no-op
+    // to avoid duplicate API calls
   };
 
   const logout = async () => {

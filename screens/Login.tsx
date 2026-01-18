@@ -51,34 +51,10 @@ export const Login: React.FC = () => {
         }
 
         if (data.user) {
-          // Profile will be auto-created by trigger, but it may take a moment
-          // Wait a bit and retry if needed
-          let profile = null;
-          let retries = 0;
-          while (!profile && retries < 5) {
-            await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
-            const { data: profileData, error: profileError } = await supabase
-              .from('profiles')
-              .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
-              .eq('id', data.user.id)
-              .maybeSingle();
-            
-            if (profileData) {
-              profile = profileData;
-              break;
-            }
-            retries++;
-          }
-
-          if (profile) {
-            login(); // This will trigger user fetch from Supabase
-            navigate('/');
-          } else {
-            // If profile still doesn't exist, proceed anyway - it will be created by the trigger
-            // and the user can refresh or the auth state change will pick it up
-            login();
-            navigate('/');
-          }
+          // Profile will be auto-created by trigger
+          // Don't wait - let the auth state change handler pick it up
+          // This allows immediate navigation
+          navigate('/');
         }
       } else {
         // Sign in
@@ -89,7 +65,8 @@ export const Login: React.FC = () => {
 
         if (signInError) throw signInError;
 
-        login(); // This will trigger user fetch from Supabase
+        // Don't call login() - let the auth state change handler pick it up
+        // This is faster and avoids duplicate API calls
         navigate('/');
       }
     } catch (err: any) {
