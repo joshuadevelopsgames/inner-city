@@ -127,21 +127,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Initialize auth state and load user
   useEffect(() => {
     let mounted = true;
+    let timeoutId: NodeJS.Timeout;
+
+    // Set a timeout to ensure loading state doesn't hang forever
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.warn('Auth check timeout - setting loading to false');
+        setIsLoadingUser(false);
+      }
+    }, 5000); // 5 second timeout
 
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (mounted) {
+    supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (!mounted) return;
+        
+        clearTimeout(timeoutId);
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          setIsLoadingUser(false);
+          return;
+        }
+        
         if (session?.user) {
-          loadUserProfile(session.user.id);
+          loadUserProfile(session.user.id).finally(() => {
+            if (mounted) {
+              clearTimeout(timeoutId);
+            }
+          });
         } else {
           setIsLoadingUser(false);
         }
-      }
-    });
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        console.error('Failed to get session:', error);
+        clearTimeout(timeoutId);
+        setIsLoadingUser(false);
+      });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+      
+      clearTimeout(timeoutId);
       
       if (session?.user) {
         // Always load profile on auth state change to ensure it's up to date
@@ -154,6 +184,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => {
       mounted = false;
+      clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
   }, []);
@@ -171,7 +202,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]);
 
       const { data: profile, error } = profileResult;
-      const { data: { user: authUser } } = authResult;
+      const { data: { user: authUser }, error: authError } = authResult;
+
+      // If auth user fetch failed, we can't proceed
+      if (authError || !authUser) {
+        console.error('Failed to get auth user:', authError);
+        setIsLoadingUser(false);
+        return;
+      }
 
       if (error) {
         // If profile doesn't exist yet (trigger might not have run), retry once quickly
@@ -184,7 +222,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             .eq('id', userId)
             .maybeSingle();
           
-          if (retryProfile && authUser) {
+          if (retryProfile) {
             const appUser = convertProfileToUser(retryProfile, authUser);
             setUser(appUser);
             setIsLoadingUser(false);
@@ -195,10 +233,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Profile fetch error (non-critical):', error);
       }
 
-      if (profile && authUser) {
+      if (profile) {
         const appUser = convertProfileToUser(profile, authUser);
         setUser(appUser);
-      } else if (authUser && !profile) {
+      } else {
         // Profile doesn't exist yet but user is authenticated
         // Create a minimal user object to allow navigation
         // The trigger will create the profile, and it will be picked up on next load
@@ -223,6 +261,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error('Failed to load user profile:', error);
       // Don't set user to null on error - allow them to continue
     } finally {
+      // Always set loading to false, even if there were errors
       setIsLoadingUser(false);
     }
   };
