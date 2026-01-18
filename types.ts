@@ -97,9 +97,65 @@ export interface ThemeTokens {
 
 export interface Notification {
   id: string;
-  type: 'follow' | 'comment' | 'dm' | 'reminder';
+  type: 'follow' | 'comment' | 'dm' | 'reminder' | 'like' | 'rsvp';
   fromUserId: string;
   text: string;
   createdAt: string;
   read: boolean;
+}
+
+// Social Features
+export interface UserPost {
+  id: string;
+  userId: string;
+  eventId?: string;
+  content: string;
+  mediaUrls: string[];
+  likesCount: number;
+  commentsCount: number;
+  createdAt: string;
+  updatedAt: string;
+  user?: User;
+  event?: Event;
+  isLiked?: boolean;
+}
+
+export interface PostComment {
+  id: string;
+  postId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  user?: User;
+}
+
+export interface EventAttendee {
+  eventId: string;
+  userId: string;
+  status: 'going' | 'interested' | 'maybe';
+  isPublic: boolean;
+  createdAt: string;
+  user?: User;
+}
+
+export interface DirectMessage {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  message: string;
+  readAt?: string;
+  createdAt: string;
+  sender?: User;
+  recipient?: User;
+}
+
+export interface EventReview {
+  id: string;
+  eventId: string;
+  userId: string;
+  rating: number;
+  reviewText?: string;
+  createdAt: string;
+  user?: User;
 }

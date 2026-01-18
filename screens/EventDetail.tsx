@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../store';
 import { Badge, NeonButton, Card } from '../components/UI';
@@ -7,10 +7,12 @@ import {
   ChevronLeft, Share2, MapPin, Clock, ExternalLink, 
   MessageCircle, AlertTriangle, PlayCircle, Users, 
   ShieldCheck, X, Check, Zap, CreditCard, Loader2,
-  ExternalLink as LinkIcon, RefreshCw
+  ExternalLink as LinkIcon, RefreshCw, UserPlus, Heart
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getEventAttendees, setEventAttendance, removeEventAttendance, getUserEventAttendance } from '../services/social';
+import { EventAttendee } from '../types';
 
 const TICKET_TIERS = [
   { id: 'early', name: 'Early Bird', price: '€15.00', perks: 'Entry before 23:00' },
@@ -28,6 +30,64 @@ export const EventDetail: React.FC = () => {
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   const [purchaseMode, setPurchaseMode] = useState<'native' | 'ticketmaster'>('native');
   const [purchaseState, setPurchaseState] = useState<'idle' | 'processing' | 'success'>('idle');
+  
+  // Social features
+  const [attendees, setAttendees] = useState<EventAttendee[]>([]);
+  const [userAttendance, setUserAttendance] = useState<EventAttendee | null>(null);
+  const [showAttendees, setShowAttendees] = useState(false);
+  const [isLoadingAttendees, setIsLoadingAttendees] = useState(false);
+
+  // Load attendees and user attendance
+  useEffect(() => {
+    if (!event || !id) return;
+    
+    loadAttendees();
+    if (user) {
+      loadUserAttendance();
+    }
+  }, [event?.id, user?.id]);
+
+  const loadAttendees = async () => {
+    if (!event || !id) return;
+    setIsLoadingAttendees(true);
+    try {
+      const goingAttendees = await getEventAttendees(id, 'going');
+      setAttendees(goingAttendees);
+    } catch (error) {
+      console.error('Error loading attendees:', error);
+    } finally {
+      setIsLoadingAttendees(false);
+    }
+  };
+
+  const loadUserAttendance = async () => {
+    if (!event || !id || !user) return;
+    try {
+      const attendance = await getUserEventAttendance(id, user.id);
+      setUserAttendance(attendance);
+    } catch (error) {
+      console.error('Error loading user attendance:', error);
+    }
+  };
+
+  const handleRSVP = async (status: 'going' | 'interested' | 'maybe') => {
+    if (!user || !event || !id) return;
+    
+    try {
+      if (userAttendance?.status === status) {
+        // Remove attendance if clicking same status
+        await removeEventAttendance(id, user.id);
+        setUserAttendance(null);
+        await loadAttendees();
+      } else {
+        await setEventAttendance(id, user.id, status, true);
+        setUserAttendance({ eventId: id, userId: user.id, status, isPublic: true, createdAt: new Date().toISOString() });
+        await loadAttendees();
+      }
+    } catch (error) {
+      console.error('Error setting attendance:', error);
+    }
+  };
 
   if (!event) return <div className="p-20 text-center">Event not found</div>;
 
@@ -36,6 +96,8 @@ export const EventDetail: React.FC = () => {
   const end = new Date(event.endAt);
   const isLive = now >= start && now <= end;
   const isOfficial = event.tier === 'official';
+  
+  const goingCount = attendees.filter(a => a.status === 'going').length;
 
   const handlePurchase = async () => {
     // If Ticketmaster mode and event has ticketmasterId, redirect to Ticketmaster
@@ -146,11 +208,124 @@ export const EventDetail: React.FC = () => {
           >
             Access Key Gateway <Zap size={20} fill="currentColor" />
           </NeonButton>
-          <div className="grid grid-cols-2 gap-4">
-            <button className="py-5 rounded-2xl font-black text-xs uppercase tracking-widest border border-white/10 active:scale-95 transition-all bg-white/5">Going</button>
-            <button className="py-5 rounded-2xl font-black text-xs uppercase tracking-widest border border-white/10 active:scale-95 transition-all bg-white/5">Interested</button>
+          <div className="grid grid-cols-3 gap-3">
+            <button 
+              onClick={() => user && handleRSVP('going')}
+              className={`py-5 rounded-2xl font-black text-xs uppercase tracking-widest border active:scale-95 transition-all flex items-center justify-center gap-2 ${
+                userAttendance?.status === 'going' 
+                  ? 'bg-primary border-primary' 
+                  : 'border-white/10 bg-white/5'
+              }`}
+              style={userAttendance?.status === 'going' ? { 
+                backgroundColor: theme.accent, 
+                borderColor: theme.accent,
+                color: theme.background === '#FFFFFF' ? '#FFF' : '#000'
+              } : {}}
+            >
+              <Check size={16} />
+              Going
+            </button>
+            <button 
+              onClick={() => user && handleRSVP('interested')}
+              className={`py-5 rounded-2xl font-black text-xs uppercase tracking-widest border active:scale-95 transition-all flex items-center justify-center gap-2 ${
+                userAttendance?.status === 'interested' 
+                  ? 'bg-primary border-primary' 
+                  : 'border-white/10 bg-white/5'
+              }`}
+              style={userAttendance?.status === 'interested' ? { 
+                backgroundColor: theme.accent, 
+                borderColor: theme.accent,
+                color: theme.background === '#FFFFFF' ? '#FFF' : '#000'
+              } : {}}
+            >
+              <Heart size={16} />
+              Interested
+            </button>
+            <button 
+              onClick={() => user && handleRSVP('maybe')}
+              className={`py-5 rounded-2xl font-black text-xs uppercase tracking-widest border active:scale-95 transition-all ${
+                userAttendance?.status === 'maybe' 
+                  ? 'bg-primary border-primary' 
+                  : 'border-white/10 bg-white/5'
+              }`}
+              style={userAttendance?.status === 'maybe' ? { 
+                backgroundColor: theme.accent, 
+                borderColor: theme.accent,
+                color: theme.background === '#FFFFFF' ? '#FFF' : '#000'
+              } : {}}
+            >
+              Maybe
+            </button>
           </div>
         </div>
+
+        {/* Going Together Section */}
+        {goingCount > 0 && (
+          <div className="pt-6 border-t" style={{ borderColor: theme.border }}>
+            <button
+              onClick={() => setShowAttendees(!showAttendees)}
+              className="w-full flex items-center justify-between mb-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-full" style={{ backgroundColor: theme.accent + '20' }}>
+                  <Users size={20} style={{ color: theme.accent }} />
+                </div>
+                <div className="text-left">
+                  <span className="font-black text-sm uppercase italic block mb-0.5">
+                    Going Together
+                  </span>
+                  <span className="text-[9px] opacity-40 uppercase font-black tracking-widest">
+                    {goingCount} {goingCount === 1 ? 'person' : 'people'} going
+                  </span>
+                </div>
+              </div>
+              <ChevronLeft 
+                size={20} 
+                className={`transition-transform ${showAttendees ? 'rotate-90' : '-rotate-90'}`}
+              />
+            </button>
+
+            <AnimatePresence>
+              {showAttendees && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex flex-wrap gap-3">
+                    {attendees.filter(a => a.status === 'going').slice(0, 12).map((attendee) => (
+                      <Link
+                        key={attendee.userId}
+                        to={`/profile/${attendee.userId}`}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl border transition-all hover:scale-105 active:scale-95"
+                        style={{ backgroundColor: theme.surfaceAlt, borderColor: theme.border }}
+                      >
+                        <img
+                          src={attendee.user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${attendee.userId}`}
+                          className="w-8 h-8 rounded-lg"
+                          alt={attendee.user?.displayName || 'User'}
+                        />
+                        <span className="text-xs font-black uppercase italic tracking-tight">
+                          {attendee.user?.displayName || 'User'}
+                        </span>
+                      </Link>
+                    ))}
+                    {goingCount > 12 && (
+                      <button
+                        onClick={() => setShowAttendees(true)}
+                        className="px-4 py-2 rounded-xl border text-xs font-black uppercase tracking-widest"
+                        style={{ backgroundColor: theme.surfaceAlt, borderColor: theme.border }}
+                      >
+                        +{goingCount - 12} more
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
 
         {/* Community Pulse Link */}
         <div className="pt-6 border-t" style={{ borderColor: theme.border }}>

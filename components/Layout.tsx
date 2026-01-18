@@ -21,14 +21,19 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     { icon: Plus, path: '/create', label: 'Create' },
     { icon: TicketIcon, path: '/wallet', label: 'Tickets' },
     { icon: Bookmark, path: '/saved', label: 'Saved' },
-    { icon: User, path: '/profile', label: 'Profile' },
+    { icon: User, path: '/profile', label: 'Profile', matchPattern: /^\/profile/ },
   ];
 
   const isLight = theme.background === '#FFFFFF';
 
   // Find current tab index
   const getCurrentTabIndex = () => {
-    return navItems.findIndex(item => item.path === location.pathname);
+    return navItems.findIndex(item => {
+      if (item.matchPattern) {
+        return item.matchPattern.test(location.pathname);
+      }
+      return item.path === location.pathname;
+    });
   };
 
   // Helper to check if an element or its parents are horizontally scrollable
@@ -371,7 +376,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         >
           <div className="flex justify-around items-center h-20 safe-area-bottom px-2">
             {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
+              const isActive = item.matchPattern 
+                ? item.matchPattern.test(location.pathname)
+                : location.pathname === item.path;
               const Icon = item.icon;
               
               return (
@@ -379,6 +386,13 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   key={item.path} 
                   to={item.path} 
                   className="flex-1 flex items-center justify-center h-full active:opacity-60 transition-opacity"
+                  onClick={(e) => {
+                    // If clicking profile while on a user profile, go to own profile
+                    if (item.path === '/profile' && location.pathname.startsWith('/profile/')) {
+                      e.preventDefault();
+                      navigate('/profile');
+                    }
+                  }}
                 >
                   <motion.div
                     whileTap={{ scale: 0.8 }}
