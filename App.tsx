@@ -85,6 +85,7 @@ const MobileFrame: React.FC<{ children: ReactNode }> = ({ children }) => {
 };
 
 const AppContent: React.FC = () => {
+  const { user, isLoadingUser } = useApp();
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -103,27 +104,54 @@ const AppContent: React.FC = () => {
     setHasOnboarded(true);
   };
 
-  if (hasOnboarded === null) return null;
+  // Show nothing while checking auth state
+  if (isLoadingUser || hasOnboarded === null) {
+    return (
+      <MobileFrame>
+        <div className="h-full flex items-center justify-center">
+          <div className="text-white/40 text-sm font-black uppercase tracking-widest">Loading...</div>
+        </div>
+      </MobileFrame>
+    );
+  }
 
   return (
     <Router>
       <MobileFrame>
         <Routes>
+          {/* Login page - show first if not authenticated */}
+          <Route 
+            path="/login" 
+            element={
+              user ? <Navigate to="/" replace /> : <Login />
+            } 
+          />
+          
+          {/* Onboarding - only if authenticated but not onboarded */}
           <Route 
             path="/onboarding" 
             element={
-              hasOnboarded ? <Navigate to="/" replace /> : <Onboarding onComplete={completeOnboarding} />
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : hasOnboarded ? (
+                <Navigate to="/" replace />
+              ) : (
+                <Onboarding onComplete={completeOnboarding} />
+              )
             } 
           />
+          
+          {/* Main app routes - only if authenticated */}
           <Route 
             path="/*" 
             element={
-              !hasOnboarded ? (
+              !user ? (
+                <Navigate to="/login" replace />
+              ) : !hasOnboarded ? (
                 <Navigate to="/onboarding" replace />
               ) : (
                 <AppShell>
                   <Routes>
-                    <Route path="/login" element={<Login />} />
                     <Route path="/" element={<Feed />} />
                     <Route path="/event/:id" element={<EventDetail />} />
                     <Route path="/event/:id/chat" element={<ChatRoom />} />

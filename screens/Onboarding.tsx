@@ -6,6 +6,16 @@ import { NeonButton, Card } from '../components/UI';
 import { ChevronRight, Check, MapPin, Search } from 'lucide-react';
 import { MOCK_CITIES } from '../mockData';
 
+// City-specific image URLs from Unsplash
+const CITY_IMAGES: Record<string, string> = {
+  berlin: 'https://images.unsplash.com/photo-1528722828814-77b9b83aafb2?w=600&h=400&fit=crop&q=80', // Berlin skyline
+  london: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=600&h=400&fit=crop&q=80', // London cityscape
+  ny: 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=600&h=400&fit=crop&q=80', // New York skyline
+  tokyo: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=600&h=400&fit=crop&q=80', // Tokyo cityscape
+  vancouver: 'https://images.unsplash.com/photo-1559511260-66a654ae982a?w=600&h=400&fit=crop&q=80', // Vancouver skyline
+  calgary: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=600&h=400&fit=crop&q=80', // Calgary cityscape
+};
+
 export const Onboarding: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
   const { theme, activeCity, setActiveCity } = useApp();
   const [step, setStep] = useState<'city' | 'interests' | 'welcome'>('city');
@@ -60,7 +70,11 @@ export const Onboarding: React.FC<{ onComplete: () => void }> = ({ onComplete })
                   className="w-full relative h-32 rounded-3xl overflow-hidden group border-2 transition-all active:scale-95"
                   style={{ borderColor: activeCity.id === city.id ? theme.accent : 'transparent' }}
                 >
-                  <img src={`https://picsum.photos/seed/${city.id}/600/400`} className="absolute inset-0 w-full h-full object-cover grayscale brightness-50 group-hover:grayscale-0 transition-all duration-700" />
+                  <img 
+                    src={CITY_IMAGES[city.id] || `https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=600&h=400&fit=crop&q=80`} 
+                    alt={`${city.name}, ${city.country}`}
+                    className="absolute inset-0 w-full h-full object-cover grayscale brightness-50 group-hover:grayscale-0 transition-all duration-700" 
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
                   <div className="absolute bottom-4 left-6 text-left">
                     <h3 className="text-2xl font-black italic uppercase text-white tracking-tighter">{city.name}</h3>

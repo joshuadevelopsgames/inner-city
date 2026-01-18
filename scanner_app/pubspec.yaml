@@ -1,0 +1,40 @@
+name: inner_city_scanner
+description: Offline-first scanner app for Inner City ticketing
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # QR Code Scanning
+  mobile_scanner: ^3.5.0
+  
+  # Storage
+  shared_preferences: ^2.2.0
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  
+  # Network
+  http: ^1.1.0
+  connectivity_plus: ^5.0.0
+  
+  # Crypto
+  crypto: ^3.0.0
+  
+  # State Management
+  provider: ^6.1.0
+  
+  # UI
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

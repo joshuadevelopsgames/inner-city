@@ -122,6 +122,7 @@ export const MapScreen: React.FC = () => {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [mapError, setMapError] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
   
   // Safety check - ensure component is mounted before processing
   useEffect(() => {
@@ -143,7 +144,8 @@ export const MapScreen: React.FC = () => {
 
   const cityEvents = useMemo(() => {
     try {
-      return events.filter(e => e && e.cityId === activeCity.id);
+      // Filter and only include events with valid coordinates for map display
+      return events.filter(e => e && e.cityId === activeCity.id && typeof e.lat === 'number' && typeof e.lng === 'number' && !isNaN(e.lat) && !isNaN(e.lng));
     } catch (e) {
       console.error('Error filtering city events:', e);
       return [];
@@ -547,6 +549,7 @@ export const MapScreen: React.FC = () => {
       map.on('load', () => {
         console.log("Mapbox loaded successfully");
         setMapError(false);
+        setMapLoaded(true);
         // Ensure map is visible after load
         if (mapContainerRef.current) {
           mapContainerRef.current.style.opacity = '1';
@@ -625,7 +628,7 @@ export const MapScreen: React.FC = () => {
   }, [userLocation, mapError]);
 
   useEffect(() => {
-    if (!mapRef.current || mapError) return;
+    if (!mapRef.current || mapError || !mapLoaded) return;
 
     try {
     const currentMarkers = markersRef.current;
@@ -650,113 +653,200 @@ export const MapScreen: React.FC = () => {
       // Add markers for event groups (clustered or single)
       if (!eventGroups || eventGroups.length === 0) return;
 
-      eventGroups.forEach(group => {
-        try {
-          if (!group || !group.location || !group.events || group.events.length === 0) return;
-          
-          const { location, events: groupEvents } = group;
-          const isCluster = groupEvents.length > 1;
-
-      const el = document.createElement('div');
-      el.className = 'custom-marker';
-      
-          // For clusters, use the most prominent event for styling
-          const primaryEvent = groupEvents.find(e => e.tier === 'official') || groupEvents[0];
-          if (!primaryEvent) return;
-          
-          const isOfficial = primaryEvent.tier === 'official';
-          const hasLiveEvent = groupEvents.some(e => {
-            try {
-              const now = Date.now();
-              return new Date(e.startAt).getTime() < now && new Date(e.endAt).getTime() > now;
-            } catch {
-              return false;
-            }
-          });
-
-          if (isCluster) {
-            // Cluster marker with count
-            el.innerHTML = `
-              <div class="relative flex items-center justify-center group cursor-pointer">
-                <div class="absolute inset-0 rounded-full blur-md opacity-40 transition-all duration-300 group-hover:opacity-100" 
-                     style="background: ${isOfficial ? theme.accent : '#666'}"></div>
-                <div class="relative z-10 w-12 h-12 rounded-full border-2 border-white/20 transition-transform duration-300 group-hover:scale-110 shadow-2xl flex items-center justify-center font-black text-xs" 
-                     style="background-color: ${isOfficial ? theme.accent : theme.surfaceAlt}; color: ${isOfficial ? '#000' : theme.text}">
-                  ${groupEvents.length}
-                </div>
-                ${hasLiveEvent ? `<div class="absolute inset-0 rounded-full animate-ping opacity-60" style="background-color: ${theme.accent}"></div>` : ''}
-              </div>
-            `;
-
-            el.onclick = (e) => {
-              e.stopPropagation();
-              setSelectedCluster(group);
-              setSelectedEventId(null);
-              mapRef.current?.easeTo({ center: [location.lng, location.lat], zoom: 16 });
-            };
-          } else {
-            // Single event marker
-            const event = groupEvents[0];
-            if (!event) return;
-            
-            let isLive = false;
-            try {
-              isLive = new Date(event.startAt).getTime() < Date.now() && new Date(event.endAt).getTime() > Date.now();
-            } catch {
-              isLive = false;
-            }
-
-      el.innerHTML = `
-        <div class="relative flex items-center justify-center w-10 h-10 group cursor-pointer">
-          <div class="absolute inset-0 rounded-full blur-md opacity-40 transition-all duration-300 group-hover:opacity-100" 
-               style="background: ${isOfficial ? theme.accent : '#666'}"></div>
-          <div class="relative z-10 p-2 rounded-full border-2 border-white/10 transition-transform duration-300 group-hover:scale-110 shadow-2xl" 
-               style="background-color: ${isOfficial ? theme.accent : theme.surfaceAlt}">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" 
-                 stroke="${isOfficial ? '#000' : theme.text}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
-              <circle cx="12" cy="10" r="3"></circle>
-            </svg>
-          </div>
-          ${isLive ? `<div class="absolute inset-0 rounded-full animate-ping opacity-60" style="background-color: ${theme.accent}"></div>` : ''}
-        </div>
-      `;
-
-      el.onclick = () => {
-        setSelectedEventId(event.id);
-              setSelectedCluster(null);
-              mapRef.current?.easeTo({ center: [event.lng, event.lat], zoom: 15 });
-            };
-          }
+      // Use requestAnimationFrame to batch marker creation and avoid blocking UI
+      let index = 0;
+      const addMarkersBatch = () => {
+        const BATCH_SIZE = 10; // Add 10 markers per frame
+        const endIndex = Math.min(index + BATCH_SIZE, eventGroups.length);
+        
+        for (let i = index; i < endIndex; i++) {
+          const group = eventGroups[i];
+          if (!group) continue;
 
           try {
-            if (!mapRef.current) return;
+            if (!group || !group.location || !group.events || group.events.length === 0) continue;
             
-            const markerKey = isCluster ? `cluster_${location.lat}_${location.lng}` : groupEvents[0]?.id;
-            if (!markerKey) return;
+            const { location, events: groupEvents } = group;
+            const isCluster = groupEvents.length > 1;
+
+            const el = document.createElement('div');
+            el.className = 'custom-marker';
             
-            // Validate coordinates
-            if (typeof location.lat !== 'number' || typeof location.lng !== 'number' || 
-                isNaN(location.lat) || isNaN(location.lng)) {
-              console.warn('Invalid coordinates for marker:', location);
-              return;
+            // For clusters, use the most prominent event for styling
+            const primaryEvent = groupEvents.find(e => e.tier === 'official') || groupEvents[0];
+            if (!primaryEvent) continue;
+            
+            const isOfficial = primaryEvent.tier === 'official';
+            const hasLiveEvent = groupEvents.some(e => {
+              try {
+                const now = Date.now();
+                return new Date(e.startAt).getTime() < now && new Date(e.endAt).getTime() > now;
+              } catch {
+                return false;
+              }
+            });
+
+            if (isCluster) {
+              // Enhanced cluster marker with better visual representation
+              const eventCount = groupEvents.length;
+              const size = Math.min(48 + (eventCount * 2), 72); // Scale with count, max 72px
+              const officialCount = groupEvents.filter(e => e.tier === 'official').length;
+              const officialRatio = officialCount / eventCount;
+              
+              // Determine primary color based on official events ratio
+              const primaryColor = officialRatio > 0.5 ? theme.accent : (officialRatio > 0 ? '#888' : '#666');
+              
+              // Create visual segments for event diversity
+              const categories = new Set(groupEvents.map(e => e.categories?.[0] || 'event').slice(0, 3));
+              const categoryCount = Math.min(categories.size, 3);
+              
+              el.innerHTML = `
+                <div class="relative flex items-center justify-center group cursor-pointer" style="width: ${size}px; height: ${size}px;">
+                  <!-- Outer glow ring -->
+                  <div class="absolute inset-0 rounded-full blur-lg opacity-50 transition-all duration-300 group-hover:opacity-100 group-hover:blur-xl" 
+                       style="background: ${primaryColor}; box-shadow: 0 0 ${size}px ${primaryColor}40;"></div>
+                  
+                  <!-- Pulsing ring for live events -->
+                  ${hasLiveEvent ? `
+                    <div class="absolute inset-0 rounded-full animate-ping opacity-40" 
+                         style="background-color: ${theme.accent}; animation-duration: 2s;"></div>
+                    <div class="absolute inset-0 rounded-full animate-pulse opacity-30" 
+                         style="background-color: ${theme.accent}; animation-duration: 1.5s;"></div>
+                  ` : ''}
+                  
+                  <!-- Main cluster circle with gradient -->
+                  <div class="relative z-10 rounded-full border-2 border-white/30 transition-all duration-300 group-hover:scale-110 group-hover:border-white/50 shadow-2xl flex flex-col items-center justify-center font-black" 
+                       style="width: ${size}px; height: ${size}px; background: linear-gradient(135deg, ${primaryColor}dd, ${primaryColor}aa);">
+                    
+                    <!-- Event count badge -->
+                    <div class="text-center leading-none" style="color: ${isOfficial ? '#000' : '#fff'};">
+                      <div class="text-lg font-black" style="font-size: ${size * 0.3}px; line-height: 1;">
+                        ${eventCount}
+                      </div>
+                      <div class="text-[8px] uppercase tracking-wider opacity-70 mt-0.5" style="font-size: ${size * 0.12}px;">
+                        ${eventCount === 1 ? 'event' : 'events'}
+                      </div>
+                    </div>
+                    
+                    <!-- Category diversity indicator (small dots) -->
+                    ${categoryCount > 1 ? `
+                      <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
+                        ${Array.from({ length: categoryCount }).map((_, i) => `
+                          <div class="w-1 h-1 rounded-full bg-white/60" style="width: ${size * 0.08}px; height: ${size * 0.08}px;"></div>
+                        `).join('')}
+                      </div>
+                    ` : ''}
+                    
+                    <!-- Official events indicator -->
+                    ${officialCount > 0 ? `
+                      <div class="absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center shadow-lg" 
+                           style="background: ${theme.accent}; width: ${size * 0.25}px; height: ${size * 0.25}px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="black" stroke="black" stroke-width="2.5">
+                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                      </div>
+                    ` : ''}
+                  </div>
+                  
+                  <!-- Hover tooltip preview -->
+                  <div class="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-20">
+                    <div class="px-2 py-1 rounded-lg bg-black/90 backdrop-blur-sm border border-white/20 shadow-xl">
+                      <p class="text-[8px] font-black uppercase tracking-widest text-white">
+                        ${groupEvents[0]?.venueName || 'Multiple Events'}
+                      </p>
+                      <p class="text-[7px] font-medium opacity-60 text-white mt-0.5">
+                        ${eventCount} ${eventCount === 1 ? 'event' : 'events'} • Tap to view
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              `;
+
+              el.onclick = (e: MouseEvent) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setSelectedCluster(group);
+                setSelectedEventId(null);
+                if (mapRef.current) {
+                  mapRef.current.easeTo({ center: [location.lng, location.lat], zoom: 16 });
+                }
+              };
+            } else {
+              // Single event marker
+              const event = groupEvents[0];
+              if (!event) continue;
+              
+              let isLive = false;
+              try {
+                isLive = new Date(event.startAt).getTime() < Date.now() && new Date(event.endAt).getTime() > Date.now();
+              } catch {
+                isLive = false;
+              }
+
+              el.innerHTML = `
+                <div class="relative flex items-center justify-center w-10 h-10 group cursor-pointer">
+                  <div class="absolute inset-0 rounded-full blur-md opacity-40 transition-all duration-300 group-hover:opacity-100" 
+                       style="background: ${isOfficial ? theme.accent : '#666'}"></div>
+                  <div class="relative z-10 p-2 rounded-full border-2 border-white/10 transition-transform duration-300 group-hover:scale-110 shadow-2xl" 
+                       style="background-color: ${isOfficial ? theme.accent : theme.surfaceAlt}">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" 
+                         stroke="${isOfficial ? '#000' : theme.text}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
+                      <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                  </div>
+                  ${isLive ? `<div class="absolute inset-0 rounded-full animate-ping opacity-60" style="background-color: ${theme.accent}"></div>` : ''}
+                </div>
+              `;
+
+              el.onclick = (e: MouseEvent) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setSelectedEventId(event.id);
+                setSelectedCluster(null);
+                if (mapRef.current) {
+                  mapRef.current.easeTo({ center: [event.lng, event.lat], zoom: 15 });
+                }
+              };
             }
-            
-        const marker = new mapboxgl.Marker(el)
-              .setLngLat([location.lng, location.lat])
-              .addTo(mapRef.current);
-            markersRef.current[markerKey] = marker;
+
+            try {
+              if (!mapRef.current) continue;
+              
+              const markerKey = isCluster ? `cluster_${location.lat}_${location.lng}` : groupEvents[0]?.id;
+              if (!markerKey) continue;
+              
+              // Validate coordinates
+              if (typeof location.lat !== 'number' || typeof location.lng !== 'number' || 
+                  isNaN(location.lat) || isNaN(location.lng)) {
+                console.warn('Invalid coordinates for marker:', location);
+                return;
+              }
+              
+              const marker = new mapboxgl.Marker(el)
+                .setLngLat([location.lng, location.lat])
+                .addTo(mapRef.current);
+              markersRef.current[markerKey] = marker;
+            } catch (e) {
+              console.warn("Could not add marker to mapbox", e);
+            }
           } catch (e) {
-            console.warn("Could not add marker to mapbox", e);
+            console.warn("Error processing event group:", e);
           }
-      } catch (e) {
-        console.warn("Error processing event group:", e);
-      }
-    });
+        }
+        
+        index = endIndex;
+        if (index < eventGroups.length) {
+          requestAnimationFrame(addMarkersBatch);
+        }
+      };
+      
+      // Start adding markers
+      requestAnimationFrame(addMarkersBatch);
     } catch (error) {
       console.error('Error in marker creation useEffect:', error);
     }
-  }, [eventGroups, theme.accent, theme.surfaceAlt, theme.text, mapError]);
+  }, [eventGroups, theme.accent, theme.surfaceAlt, theme.text, mapError, mapLoaded]);
 
   return (
     <div className="relative h-[calc(100vh-160px)] overflow-hidden" style={{ backgroundColor: theme.background }}>

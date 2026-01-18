@@ -152,22 +152,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loadUserProfile = async (userId: string) => {
     try {
+      // Use specific column selection instead of '*' to avoid 406 errors
       const { data: profile, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        // If profile doesn't exist yet (trigger might not have run), wait and retry once
+        if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
+          console.log('Profile not found, waiting for trigger to create it...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const { data: retryProfile, error: retryError } = await supabase
+            .from('profiles')
+            .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
+            .eq('id', userId)
+            .maybeSingle();
+          
+          if (retryProfile && !retryError) {
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (authUser) {
+              const appUser = convertProfileToUser(retryProfile, authUser);
+              setUser(appUser);
+            }
+            return;
+          }
+        }
+        // For other errors, log but don't throw - allow user to continue
+        console.warn('Profile fetch error (non-critical):', error);
+      }
 
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (profile && authUser) {
-        const appUser = convertProfileToUser(profile, authUser);
-        setUser(appUser);
+      if (profile) {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          const appUser = convertProfileToUser(profile, authUser);
+          setUser(appUser);
+        }
       }
     } catch (error) {
       console.error('Failed to load user profile:', error);
-      setUser(null);
+      // Don't set user to null on error - allow them to continue
     } finally {
       setIsLoadingUser(false);
     }

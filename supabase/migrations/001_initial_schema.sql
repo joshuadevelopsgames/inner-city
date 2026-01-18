@@ -127,64 +127,116 @@ ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: Users can read all profiles, update their own
+DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON public.profiles;
 CREATE POLICY "Profiles are viewable by everyone" ON public.profiles
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile" ON public.profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
 
+-- Allow service role (used by SECURITY DEFINER functions) to insert profiles
+-- This ensures the trigger function can create profiles
+DROP POLICY IF EXISTS "Service role can insert profiles" ON public.profiles;
+CREATE POLICY "Service role can insert profiles" ON public.profiles
+  FOR INSERT WITH CHECK (auth.role() = 'service_role');
+
 -- Events: Everyone can read, authenticated users can create
+DROP POLICY IF EXISTS "Events are viewable by everyone" ON public.events;
 CREATE POLICY "Events are viewable by everyone" ON public.events
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can create events" ON public.events;
 CREATE POLICY "Authenticated users can create events" ON public.events
   FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- Saved events: Users can manage their own saved events
+DROP POLICY IF EXISTS "Users can view own saved events" ON public.saved_events;
 CREATE POLICY "Users can view own saved events" ON public.saved_events
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can save events" ON public.saved_events;
 CREATE POLICY "Users can save events" ON public.saved_events
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can unsave events" ON public.saved_events;
 CREATE POLICY "Users can unsave events" ON public.saved_events
   FOR DELETE USING (auth.uid() = user_id);
 
 -- Tickets: Users can view their own tickets
+DROP POLICY IF EXISTS "Users can view own tickets" ON public.tickets;
 CREATE POLICY "Users can view own tickets" ON public.tickets
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create own tickets" ON public.tickets;
 CREATE POLICY "Users can create own tickets" ON public.tickets
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Chat messages: Everyone can read messages for an event, authenticated users can post
+DROP POLICY IF EXISTS "Chat messages are viewable by everyone" ON public.chat_messages;
 CREATE POLICY "Chat messages are viewable by everyone" ON public.chat_messages
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can post messages" ON public.chat_messages;
 CREATE POLICY "Authenticated users can post messages" ON public.chat_messages
   FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- Notifications: Users can view their own notifications
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
 CREATE POLICY "Users can view own notifications" ON public.notifications
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
 CREATE POLICY "Users can update own notifications" ON public.notifications
   FOR UPDATE USING (auth.uid() = user_id);
 
 -- Function to automatically create profile on user signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  base_username TEXT;
+  final_username TEXT;
+  username_counter INTEGER := 0;
 BEGIN
+  -- Get base username from metadata or generate from email
+  base_username := COALESCE(
+    NEW.raw_user_meta_data->>'username',
+    lower(regexp_replace(split_part(NEW.email, '@', 1), '[^a-z0-9_]', '_', 'g'))
+  );
+  
+  -- Ensure username is not empty and starts with a letter
+  IF base_username IS NULL OR base_username = '' THEN
+    base_username := 'user_' || substr(NEW.id::text, 1, 8);
+  ELSIF NOT (base_username ~ '^[a-z]') THEN
+    base_username := 'user_' || base_username;
+  END IF;
+  
+  -- Handle unique constraint: if username exists, append number
+  final_username := base_username;
+  WHILE EXISTS (SELECT 1 FROM public.profiles WHERE username = final_username) LOOP
+    username_counter := username_counter + 1;
+    final_username := base_username || '_' || username_counter;
+  END LOOP;
+  
+  -- Insert profile with unique username
   INSERT INTO public.profiles (id, username, display_name)
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'username', 'user_' || substr(NEW.id::text, 1, 8)),
-    COALESCE(NEW.raw_user_meta_data->>'display_name', NEW.email)
-  );
+    final_username,
+    COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1))
+  )
+  ON CONFLICT (id) DO NOTHING; -- Prevent duplicate inserts
+  
   RETURN NEW;
+EXCEPTION
+  WHEN OTHERS THEN
+    -- Log error but don't fail user creation
+    RAISE WARNING 'Error creating profile for user %: %', NEW.id, SQLERRM;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -204,10 +256,12 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Triggers for updated_at
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
+DROP TRIGGER IF EXISTS update_events_updated_at ON public.events;
 CREATE TRIGGER update_events_updated_at
   BEFORE UPDATE ON public.events
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
