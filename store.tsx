@@ -339,8 +339,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:320',message:'Promise.all timed out, using fallback',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
         // On timeout, try to get auth user at least (profile might not exist yet)
+        // But add a quick timeout to this too
         try {
-          const { data: { user: authUser } } = await supabase.auth.getUser();
+          const fallbackTimeout = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Fallback timeout')), 1000);
+          });
+          
+          const { data: { user: authUser } } = await Promise.race([
+            supabase.auth.getUser(),
+            fallbackTimeout
+          ]) as { data: { user: any } };
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:328',message:'Fallback: got auth user',data:{hasAuthUser:!!authUser},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          
           if (authUser) {
             // Create minimal user from auth data
             const minimalUser: User = {
@@ -358,13 +371,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               verified: false,
               createdAt: authUser.created_at || new Date().toISOString(),
             };
+            // #region agent log
+            fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:348',message:'Fallback: setting minimal user and stopping load',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
             setUser(minimalUser);
             setIsLoadingUser(false);
             return;
           }
         } catch (e) {
-          // Even auth user fetch failed
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:355',message:'Fallback: auth user fetch also failed, forcing stop',data:{error:e instanceof Error ? e.message : String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          // Even auth user fetch failed - just stop loading
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'store.tsx:360',message:'Fallback: setting loading false (no user)',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         setIsLoadingUser(false);
         return;
       }
