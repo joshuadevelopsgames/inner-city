@@ -1,14 +1,15 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../store';
-import { Event, CityPulse, UserPost } from '../types';
+import { Event, CityPulse, UserPost, PulseItem, RecommendedEvent } from '../types';
 import { Badge, Card } from '../components/UI';
-import { Heart, Bookmark, Share2, MapPin, Clock, Zap, PlayCircle, ShieldCheck, MessageCircle, MoreHorizontal, Send, Loader2 } from 'lucide-react';
+import { Heart, Bookmark, Share2, MapPin, Clock, Zap, PlayCircle, ShieldCheck, MessageCircle, MoreHorizontal, Send, Loader2, CheckCircle2, Calendar, MapPin as MapPinIcon, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, isValid, formatDistanceToNow } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { MOCK_CITY_PULSES } from '../mockData';
 import { getFeedPosts, likePost, unlikePost, checkPostLiked, getPostComments, addPostComment, createPost } from '../services/social';
+import { getPulseFeed } from '../services/pulse';
 import { supabase } from '../lib/supabase';
 import { getOptimizedImageUrl } from '../utils/imageOptimization';
 
@@ -271,7 +272,246 @@ const PostCard: React.FC<{ post: UserPost }> = ({ post }) => {
   );
 };
 
-const EventCard: React.FC<{ event: Event }> = ({ event }) => {
+// Check-in Card Component
+const CheckinCard: React.FC<{ post: UserPost; event: Event }> = ({ post, event }) => {
+  const { theme } = useApp();
+  const isLight = theme.background === '#FFFFFF';
+  
+  return (
+    <Card className="mb-6 mx-6">
+      <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: theme.border }}>
+        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+          <img src={post.user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} alt={post.user?.displayName} className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-black uppercase italic tracking-tight">{post.user?.displayName}</span>
+            <CheckCircle2 size={14} className="text-green-500" />
+          </div>
+          <span className="text-[10px] opacity-60">Checked in</span>
+        </div>
+        <span className="text-[9px] opacity-40">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</span>
+      </div>
+      <Link to={`/event/${event.id}`} className="block px-6 py-4">
+        <div className="flex items-center gap-3">
+          <img src={getOptimizedImageUrl(event.mediaUrls[0] || '', 'thumbnail')} className="w-16 h-16 rounded-xl object-cover" alt={event.title} />
+          <div className="flex-1 min-w-0">
+            <h4 className="text-sm font-black uppercase italic tracking-tight truncate mb-1">{event.title}</h4>
+            <div className="flex items-center gap-2 text-[9px] opacity-60">
+              <MapPin size={10} />
+              <span>{event.venueName}</span>
+            </div>
+          </div>
+        </div>
+      </Link>
+    </Card>
+  );
+};
+
+// Plan Card Component (ephemeral)
+const PlanCard: React.FC<{ post: UserPost }> = ({ post }) => {
+  const { theme, user } = useApp();
+  const [isLiked, setIsLiked] = useState(post.isLiked || false);
+  const [likesCount, setLikesCount] = useState(post.likesCount);
+  const isLight = theme.background === '#FFFFFF';
+  const expiresAt = post.expiresAt ? new Date(post.expiresAt) : null;
+  const isExpired = expiresAt && expiresAt < new Date();
+
+  if (isExpired) return null; // Don't show expired plans
+
+  return (
+    <Card className="mb-6 mx-6 border-2" style={{ borderColor: theme.accent + '40' }}>
+      <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: theme.border }}>
+        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+          <img src={post.user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} alt={post.user?.displayName} className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-black uppercase italic tracking-tight">{post.user?.displayName}</span>
+            <Calendar size={14} style={{ color: theme.accent }} />
+          </div>
+          <span className="text-[10px] opacity-60">Making a plan</span>
+        </div>
+        {expiresAt && (
+          <span className="text-[9px] opacity-40">Expires {formatDistanceToNow(expiresAt, { addSuffix: true })}</span>
+        )}
+      </div>
+      <div className="px-6 py-4">
+        <p className="text-sm leading-relaxed mb-3" style={{ color: theme.text }}>{post.content}</p>
+        {post.placeName && (
+          <div className="flex items-center gap-2 text-[10px] opacity-60 mb-3">
+            <MapPinIcon size={12} />
+            <span>{post.placeName}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-6">
+          <button 
+            onClick={async () => {
+              if (!user) return;
+              try {
+                if (isLiked) {
+                  await unlikePost(post.id, user.id);
+                  setIsLiked(false);
+                  setLikesCount(prev => Math.max(0, prev - 1));
+                } else {
+                  await likePost(post.id, user.id);
+                  setIsLiked(true);
+                  setLikesCount(prev => prev + 1);
+                }
+              } catch (error) {
+                console.error('Error toggling like:', error);
+              }
+            }}
+            className="flex items-center gap-2 text-[10px] font-black tracking-widest uppercase"
+            style={{ color: isLiked ? theme.accent : theme.textDim }}
+          >
+            <Heart size={18} fill={isLiked ? theme.accent : 'none'} />
+            {likesCount}
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+// Spot Card Component (location recommendation)
+const SpotCard: React.FC<{ post: UserPost }> = ({ post }) => {
+  const { theme, user } = useApp();
+  const [isLiked, setIsLiked] = useState(post.isLiked || false);
+  const [likesCount, setLikesCount] = useState(post.likesCount);
+  const isLight = theme.background === '#FFFFFF';
+
+  return (
+    <Card className="mb-6 mx-6">
+      <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: theme.border }}>
+        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+          <img src={post.user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} alt={post.user?.displayName} className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-black uppercase italic tracking-tight">{post.user?.displayName}</span>
+            <MapPinIcon size={14} style={{ color: theme.accent }} />
+          </div>
+          <span className="text-[10px] opacity-60">Recommending a spot</span>
+        </div>
+        <span className="text-[9px] opacity-40">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</span>
+      </div>
+      <div className="px-6 py-4">
+        {post.placeName && (
+          <h4 className="text-lg font-black uppercase italic tracking-tight mb-2" style={{ color: theme.accent }}>
+            {post.placeName}
+          </h4>
+        )}
+        <p className="text-sm leading-relaxed mb-3" style={{ color: theme.text }}>{post.content}</p>
+        {post.address && (
+          <div className="flex items-center gap-2 text-[10px] opacity-60 mb-3">
+            <MapPin size={12} />
+            <span>{post.address}</span>
+          </div>
+        )}
+        {post.mediaUrls && post.mediaUrls.length > 0 && (
+          <div className="mb-3 rounded-2xl overflow-hidden">
+            <img src={post.mediaUrls[0]} className="w-full rounded-2xl object-cover" alt={post.placeName} />
+          </div>
+        )}
+        <div className="flex items-center gap-6">
+          <button 
+            onClick={async () => {
+              if (!user) return;
+              try {
+                if (isLiked) {
+                  await unlikePost(post.id, user.id);
+                  setIsLiked(false);
+                  setLikesCount(prev => Math.max(0, prev - 1));
+                } else {
+                  await likePost(post.id, user.id);
+                  setIsLiked(true);
+                  setLikesCount(prev => prev + 1);
+                }
+              } catch (error) {
+                console.error('Error toggling like:', error);
+              }
+            }}
+            className="flex items-center gap-2 text-[10px] font-black tracking-widest uppercase"
+            style={{ color: isLiked ? theme.accent : theme.textDim }}
+          >
+            <Heart size={18} fill={isLiked ? theme.accent : 'none'} />
+            {likesCount}
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+// Drop Card Component (curator drop)
+const DropCard: React.FC<{ post: UserPost }> = ({ post }) => {
+  const { theme, user } = useApp();
+  const [isLiked, setIsLiked] = useState(post.isLiked || false);
+  const [likesCount, setLikesCount] = useState(post.likesCount);
+  const isLight = theme.background === '#FFFFFF';
+  const expiresAt = post.expiresAt ? new Date(post.expiresAt) : null;
+  const isExpired = expiresAt && expiresAt < new Date();
+
+  if (isExpired) return null; // Don't show expired drops
+
+  return (
+    <Card className="mb-6 mx-6 border-2" style={{ borderColor: theme.accent + '60' }}>
+      <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: theme.border }}>
+        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2" style={{ borderColor: theme.accent }}>
+          <img src={post.user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} alt={post.user?.displayName} className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-black uppercase italic tracking-tight">{post.user?.displayName}</span>
+            <Sparkles size={14} style={{ color: theme.accent }} />
+            {post.user?.verified && <ShieldCheck size={14} style={{ color: theme.accent }} />}
+          </div>
+          <span className="text-[10px] opacity-60">Curator Drop</span>
+        </div>
+        {expiresAt && (
+          <span className="text-[9px] opacity-40">Expires {formatDistanceToNow(expiresAt, { addSuffix: true })}</span>
+        )}
+      </div>
+      <div className="px-6 py-4">
+        <p className="text-sm leading-relaxed mb-3" style={{ color: theme.text }}>{post.content}</p>
+        {post.mediaUrls && post.mediaUrls.length > 0 && (
+          <div className="mb-3 rounded-2xl overflow-hidden">
+            <img src={post.mediaUrls[0]} className="w-full rounded-2xl object-cover" alt="Drop" />
+          </div>
+        )}
+        <div className="flex items-center gap-6">
+          <button 
+            onClick={async () => {
+              if (!user) return;
+              try {
+                if (isLiked) {
+                  await unlikePost(post.id, user.id);
+                  setIsLiked(false);
+                  setLikesCount(prev => Math.max(0, prev - 1));
+                } else {
+                  await likePost(post.id, user.id);
+                  setIsLiked(true);
+                  setLikesCount(prev => prev + 1);
+                }
+              } catch (error) {
+                console.error('Error toggling like:', error);
+              }
+            }}
+            className="flex items-center gap-2 text-[10px] font-black tracking-widest uppercase"
+            style={{ color: isLiked ? theme.accent : theme.textDim }}
+          >
+            <Heart size={18} fill={isLiked ? theme.accent : 'none'} />
+            {likesCount}
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+// Recommended Event Card (shows recommendation reasons)
+const RecommendedEventCard: React.FC<{ event: RecommendedEvent }> = ({ event }) => {
   const { theme, toggleSaveEvent, savedEventIds } = useApp();
   const isSaved = savedEventIds.includes(event.id);
   const isLight = theme.background === '#FFFFFF';
@@ -292,23 +532,36 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
   }, [event.startAt, event.endAt]);
   
   const isOfficial = event.tier === 'official';
+  const reasons = event.reasons;
 
   return (
-    <Card 
-      className={`mb-10 mx-6 relative border-none !rounded-[2.5rem] transition-all duration-500 overflow-visible`}
-      style={{ 
-        boxShadow: isOfficial && !isLight ? `0 0 30px ${theme.accent}15` : 'none'
-      }}
-    >
-      {isOfficial && !isLight && (
-        <div className="absolute -inset-0.5 rounded-[2.5rem] blur opacity-20 pointer-events-none" 
-             style={{ background: `linear-gradient(45deg, ${theme.accent}, transparent, ${theme.accent})` }} />
+    <Card className="mb-6 mx-6 relative border-2" style={{ borderColor: theme.accent + '40' }}>
+      <div className="px-6 py-3 border-b flex items-center gap-2" style={{ borderColor: theme.border, backgroundColor: theme.accent + '10' }}>
+        <Sparkles size={14} style={{ color: theme.accent }} />
+        <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: theme.accent }}>Recommended for you</span>
+      </div>
+      
+      {/* Recommendation reasons */}
+      {(reasons.interestMatch.length > 0 || reasons.followedGoingCount > 0 || reasons.followedInterestedCount > 0) && (
+        <div className="px-6 py-2 border-b" style={{ borderColor: theme.border }}>
+          <div className="flex flex-wrap gap-2 text-[9px]">
+            {reasons.interestMatch.length > 0 && (
+              <span className="opacity-60">Matches: {reasons.interestMatch.slice(0, 2).join(', ')}</span>
+            )}
+            {reasons.followedGoingCount > 0 && (
+              <span className="opacity-60">{reasons.followedGoingCount} people you follow are going</span>
+            )}
+            {reasons.followedInterestedCount > 0 && reasons.followedGoingCount === 0 && (
+              <span className="opacity-60">{reasons.followedInterestedCount} people you follow are interested</span>
+            )}
+          </div>
+        </div>
       )}
 
       <Link to={`/event/${event.id}`} className="block relative z-10">
         <div className="relative aspect-[4/5] overflow-hidden rounded-t-[2.5rem]">
           <img 
-            src={getOptimizedImageUrl(event.mediaUrls[0], 'card')} 
+            src={getOptimizedImageUrl(event.mediaUrls[0] || '', 'card')} 
             alt={event.title} 
             className="w-full h-full object-cover transition-transform duration-1000 hover:scale-105"
             loading="lazy"
@@ -349,7 +602,7 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
               </div>
               <div className="flex items-center gap-1.5">
                 <MapPin size={12} strokeWidth={2.5} />
-                <span>{event.venueName} • {isOfficial ? 'Central' : 'Secret Location'}</span>
+                <span>{event.venueName}</span>
               </div>
             </div>
           </div>
@@ -506,29 +759,26 @@ const filterEventsByType = (events: Event[], eventType: string): Event[] => {
 };
 
 export const Feed: React.FC = () => {
-  const { events, rankedEvents, activeCity, activeEventType, theme, user, refreshFeed, isLoadingTicketmasterEvents } = useApp();
-  const [activeMood, setActiveMood] = useState('All');
-  const [posts, setPosts] = useState<UserPost[]>([]);
-  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const { activeCity, theme, user, refreshFeed } = useApp();
+  const [pulseItems, setPulseItems] = useState<PulseItem[]>([]);
+  const [isLoadingPulse, setIsLoadingPulse] = useState(false);
   const [showCreatePost, setShowCreatePost] = useState(false);
+  const [showQuickComposer, setShowQuickComposer] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
   
-  const moods = ['All', 'Deep & Dark', 'High Energy', 'Soulful', 'Experimental'];
-  const cityEvents = events.filter(e => e.cityId === activeCity.id);
-  const filteredCityEvents = useMemo(() => filterEventsByType(cityEvents, activeEventType), [cityEvents, activeEventType]);
   const cityPulses = MOCK_CITY_PULSES.filter(p => p.cityId === activeCity.id);
   const isLight = theme.background === '#FFFFFF';
 
-  // Load posts on mount and when city or event type changes
+  // Load Pulse feed on mount and when city changes
   useEffect(() => {
-    loadPosts();
-  }, [activeCity.id, activeEventType]);
+    loadPulseFeed();
+  }, [activeCity.id, user?.id]);
 
   // Pull-to-refresh handler
   useEffect(() => {
     const handleScroll = () => {
-      if (isRefreshing || isLoadingTicketmasterEvents) return;
+      if (isRefreshing || isLoadingPulse) return;
       
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       
@@ -537,7 +787,7 @@ export const Feed: React.FC = () => {
         setIsRefreshing(true);
         Promise.all([
           refreshFeed(),
-          loadPosts()
+          loadPulseFeed()
         ]).finally(() => {
           setIsRefreshing(false);
         });
@@ -546,43 +796,52 @@ export const Feed: React.FC = () => {
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [refreshFeed, isRefreshing, isLoadingTicketmasterEvents]);
+  }, [refreshFeed, isRefreshing, isLoadingPulse]);
 
-  const loadPosts = async () => {
-    setIsLoadingPosts(true);
+  const loadPulseFeed = async () => {
+    if (!user?.id) {
+      setPulseItems([]);
+      return;
+    }
+
+    setIsLoadingPulse(true);
     try {
-      const feedPosts = await getFeedPosts(user?.id);
-      // Filter posts by city and event type (if they have an event)
-      const cityPosts = feedPosts.filter(post => 
-        !post.eventId || filteredCityEvents.some(e => e.id === post.eventId)
-      );
-      setPosts(cityPosts);
+      const result = await getPulseFeed({
+        userId: user.id,
+        cityId: activeCity.id,
+        limit: 50,
+        includeEvents: true,
+        eventInterleaveRatio: 10,
+      });
+      setPulseItems(result.items);
     } catch (error) {
-      console.error('Error loading posts:', error);
-      setPosts([]);
+      console.error('Error loading Pulse feed:', error);
+      setPulseItems([]);
     } finally {
-      setIsLoadingPosts(false);
+      setIsLoadingPulse(false);
     }
   };
 
-  // Use ranked events if available, otherwise fall back to regular events
-  const displayEvents = useMemo(() => {
-    if (rankedEvents) {
-      // Show priority events first, then background events with reduced opacity
-      const priority = filterEventsByType(rankedEvents.priority.filter(e => e.cityId === activeCity.id), activeEventType);
-      const background = filterEventsByType(rankedEvents.background.filter(e => e.cityId === activeCity.id), activeEventType);
-      return {
-        priority,
-        background,
-      };
+  // Render Pulse item based on type
+  const renderPulseItem = (item: PulseItem) => {
+    switch (item.type) {
+      case 'post':
+        return <PostCard key={item.id} post={item.data as UserPost} />;
+      case 'checkin':
+        const checkinData = item.data as { type: 'checkin'; post: UserPost; event: Event };
+        return <CheckinCard key={item.id} post={checkinData.post} event={checkinData.event} />;
+      case 'plan':
+        return <PlanCard key={item.id} post={item.data as UserPost} />;
+      case 'spot':
+        return <SpotCard key={item.id} post={item.data as UserPost} />;
+      case 'drop':
+        return <DropCard key={item.id} post={item.data as UserPost} />;
+      case 'event':
+        return <RecommendedEventCard key={item.id} event={item.data as RecommendedEvent} />;
+      default:
+        return null;
     }
-    return {
-      priority: filteredCityEvents,
-      background: [],
-    };
-  }, [rankedEvents, filteredCityEvents, activeCity.id, activeEventType]);
-
-  const isLoading = isLoadingTicketmasterEvents || isLoadingPosts;
+  };
 
   return (
     <div ref={feedRef} className="pb-10 pt-4 relative">
@@ -617,30 +876,6 @@ export const Feed: React.FC = () => {
         </div>
       </div>
 
-      <div className="mb-10">
-        <div className="px-6 flex items-center gap-2 mb-4">
-          <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40">Now Peaking</h3>
-        </div>
-        <div className="flex overflow-x-auto no-scrollbar px-6 gap-5">
-          {(displayEvents.priority.length > 0 ? displayEvents.priority : cityEvents).slice(0, 5).map(event => (
-            <Link key={event.id} to={`/event/${event.id}`} className="flex-shrink-0 w-20 flex flex-col items-center gap-2">
-              <div className="w-20 h-20 rounded-full border-2 p-1 active:scale-95 transition-all" style={{ borderColor: theme.accent }}>
-                <div className="w-full h-full rounded-full overflow-hidden relative">
-                   <img 
-                     src={getOptimizedImageUrl(event.mediaUrls[0], 'thumbnail')} 
-                     className="w-full h-full object-cover brightness-75"
-                     loading="lazy"
-                     decoding="async"
-                   />
-                </div>
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-tight text-center line-clamp-1 opacity-60 leading-tight">{event.venueName}</span>
-            </Link>
-          ))}
-        </div>
-      </div>
-
       <div className="mb-4">
         <div className="px-6 mb-4 flex justify-between items-center">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40">City Insights</h3>
@@ -651,82 +886,73 @@ export const Feed: React.FC = () => {
         </div>
       </div>
 
-      <div className="mb-10 overflow-x-auto no-scrollbar px-6 flex gap-2">
-        {moods.map(mood => (
-          <button 
-            key={mood}
-            onClick={() => setActiveMood(mood)}
-            className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${activeMood === mood ? 'bg-primary border-primary text-white' : 'border-white/10 opacity-40'}`}
-            style={{ 
-              backgroundColor: activeMood === mood ? theme.accent : 'transparent',
-              borderColor: activeMood === mood ? theme.accent : theme.border,
-              color: activeMood === mood ? (isLight ? '#FFF' : '#000') : theme.text
-            }}
-          >
-            {mood}
-          </button>
-        ))}
-      </div>
+      {/* Quick Composer */}
+      {user && (
+        <div className="px-6 mb-6">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            <button
+              onClick={() => setShowCreatePost(true)}
+              className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 whitespace-nowrap border"
+              style={{ backgroundColor: theme.surfaceAlt, borderColor: theme.border, color: theme.text }}
+            >
+              Post
+            </button>
+            <button
+              onClick={() => setShowQuickComposer(true)}
+              className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 whitespace-nowrap border"
+              style={{ backgroundColor: theme.surfaceAlt, borderColor: theme.border, color: theme.text }}
+            >
+              Check in
+            </button>
+            <button
+              onClick={() => setShowQuickComposer(true)}
+              className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 whitespace-nowrap border"
+              style={{ backgroundColor: theme.surfaceAlt, borderColor: theme.border, color: theme.text }}
+            >
+              Make a plan
+            </button>
+            <button
+              onClick={() => setShowQuickComposer(true)}
+              className="px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 whitespace-nowrap border"
+              style={{ backgroundColor: theme.surfaceAlt, borderColor: theme.border, color: theme.text }}
+            >
+              Recommend a spot
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Loading indicator */}
-      {isLoading && !isRefreshing && (
+      {isLoadingPulse && !isRefreshing && (
         <div className="px-6 mb-10 flex items-center justify-center">
           <div className="px-4 py-2 rounded-full backdrop-blur-md border" 
                style={{ backgroundColor: theme.surface, borderColor: theme.border }}>
             <div className="flex items-center gap-2">
               <Loader2 size={16} className="animate-spin" style={{ color: theme.accent }} />
-              <span className="text-[10px] font-black uppercase tracking-widest">Loading...</span>
+              <span className="text-[10px] font-black uppercase tracking-widest">Loading Pulse...</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Social Feed - Posts from Events and Users */}
-      {posts.length > 0 && (
+      {/* Pulse Feed - Mixed content (posts, check-ins, plans, spots, drops, events) */}
+      {pulseItems.length > 0 && (
         <div className="mb-10">
-          <div className="px-6 mb-4 flex items-center justify-between">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40">Community Pulse</h3>
-            {user && (
-              <button
-                onClick={() => setShowCreatePost(true)}
-                className="px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest transition-all active:scale-95"
-                style={{ backgroundColor: theme.accent, color: isLight ? '#FFF' : '#000' }}
-              >
-                + Post
-              </button>
-            )}
-          </div>
-          {posts.map(post => (
-            <PostCard key={post.id} post={post} />
-          ))}
+          {pulseItems.map(item => renderPulseItem(item))}
         </div>
       )}
 
-      {/* Priority Events - Front and Center */}
-      {displayEvents.priority.length > 0 && (
-        <div className="flex flex-col mb-6">
-          <div className="px-6 mb-4">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40">Featured Events</h3>
-          </div>
-          {displayEvents.priority.map(event => (
-            <EventCard key={event.id} event={event} />
-          ))}
-        </div>
-      )}
-
-      {/* Background Events - Reduced Opacity */}
-      {displayEvents.background.length > 0 && (
-        <div className="flex flex-col">
-          <div className="px-6 mb-4">
-            <h3 className="text-[9px] font-black uppercase tracking-[0.3em] opacity-60">
-              More Events
-            </h3>
-          </div>
-          {displayEvents.background.map(event => (
-            <div key={event.id} className="opacity-75 hover:opacity-100 transition-opacity">
-              <EventCard event={event} />
-            </div>
-          ))}
+      {/* Empty state */}
+      {!isLoadingPulse && pulseItems.length === 0 && user && (
+        <div className="px-6 py-20 text-center">
+          <p className="text-sm opacity-60 mb-4">No activity in {activeCity.name} yet.</p>
+          <button
+            onClick={() => setShowCreatePost(true)}
+            className="px-6 py-3 rounded-full text-sm font-black uppercase tracking-widest transition-all active:scale-95"
+            style={{ backgroundColor: theme.accent, color: isLight ? '#FFF' : '#000' }}
+          >
+            Be the first to post
+          </button>
         </div>
       )}
 
@@ -737,7 +963,7 @@ export const Feed: React.FC = () => {
             onClose={() => setShowCreatePost(false)}
             onPostCreated={() => {
               setShowCreatePost(false);
-              loadPosts();
+              loadPulseFeed();
             }}
           />
         )}
