@@ -586,17 +586,6 @@ export const Feed: React.FC = () => {
 
   return (
     <div ref={feedRef} className="pb-10 pt-4 relative">
-      {/* Loading indicator */}
-      {isLoading && !isRefreshing && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full backdrop-blur-md border" 
-             style={{ backgroundColor: theme.surface, borderColor: theme.border }}>
-          <div className="flex items-center gap-2">
-            <Loader2 size={16} className="animate-spin" style={{ color: theme.accent }} />
-            <span className="text-[10px] font-black uppercase tracking-widest">Loading...</span>
-          </div>
-        </div>
-      )}
-      
       {/* Pull-to-refresh indicator */}
       {isRefreshing && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full backdrop-blur-md border" 
