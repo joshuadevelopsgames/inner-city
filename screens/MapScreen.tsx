@@ -2,11 +2,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Search, Filter, Navigation, Compass, X, AlertCircle, Zap, Map as MapIcon } from 'lucide-react';
+import { MapPin, Search, Filter, Navigation, Compass, X, AlertCircle, Zap, Map as MapIcon, Activity, Calendar } from 'lucide-react';
 import { Badge, Card } from '../components/UI';
 import { Link } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
-import { Event } from '../types';
+import { Event, UserPost } from '../types';
+import { supabase } from '../lib/supabase';
 
 const MAPBOX_TOKEN = (import.meta as any).env?.VITE_MAPBOX_ACCESS_TOKEN || 'pk.eyJ1Ijoiam9zaHVhcm9hZGVyIiwiYSI6ImNta2l4MzduaTEyYzkzZXEzdHY5dmlxdDEifQ.Ch-Yoo2bvEGrdcr3ph_MaQ';
 
@@ -216,18 +217,123 @@ interface GeocodingResult {
 }
 
 export const MapScreen: React.FC = () => {
-  const { events, theme, activeCity } = useApp();
+  const { events, theme, activeCity, user } = useApp();
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [mapError, setMapError] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [currentZoom, setCurrentZoom] = useState<number>(12);
+  const [showEvents, setShowEvents] = useState(false); // Default to false (activity-first)
+  const [showActivity, setShowActivity] = useState(true); // Default to true
+  const [activityItems, setActivityItems] = useState<Array<{ id: string; type: 'post' | 'checkin' | 'plan' | 'spot' | 'drop'; post: UserPost; lat: number; lng: number }>>([]);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false);
   
   // Safety check - ensure component is mounted before processing
   useEffect(() => {
     setIsMounted(true);
     return () => setIsMounted(false);
   }, []);
+
+  // Load activity items (posts with location data)
+  useEffect(() => {
+    if (activeCity.id) {
+      loadActivityItems();
+    }
+  }, [activeCity.id]);
+
+  const loadActivityItems = async () => {
+    setIsLoadingActivity(true);
+    try {
+      const now = new Date();
+      const { data: posts, error } = await supabase
+        .from('user_posts')
+        .select('*, events(*), profiles(*)')
+        .eq('city_id', activeCity.id)
+        .not('lat', 'is', null)
+        .not('lng', 'is', null)
+        .or(`expires_at.is.null,expires_at.gt.${now.toISOString()}`)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+
+      const items = (posts || [])
+        .filter((p: any) => p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng))
+        .map((p: any) => ({
+          id: p.id,
+          type: p.type || 'post',
+          post: {
+            id: p.id,
+            userId: p.user_id,
+            type: p.type || 'post',
+            content: p.content,
+            mediaUrls: p.media_urls || [],
+            likesCount: p.likes_count || 0,
+            commentsCount: p.comments_count || 0,
+            createdAt: p.created_at,
+            updatedAt: p.updated_at,
+            expiresAt: p.expires_at,
+            lat: p.lat,
+            lng: p.lng,
+            address: p.address,
+            placeName: p.place_name,
+            cityId: p.city_id,
+            user: p.profiles ? {
+              id: p.profiles.id,
+              username: p.profiles.username,
+              displayName: p.profiles.display_name,
+              avatarUrl: p.profiles.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.profiles.id}`,
+              bio: p.profiles.bio || '',
+              socials: {},
+              interests: p.profiles.interests || [],
+              homeCity: p.profiles.home_city || '',
+              travelCities: p.profiles.travel_cities || [],
+              profileMode: p.profiles.profile_mode || 'full',
+              organizerTier: p.profiles.organizer_tier || 'none',
+              verified: p.profiles.verified || false,
+              createdAt: p.profiles.created_at,
+            } : undefined,
+            event: p.events ? {
+              id: p.events.id,
+              cityId: p.events.city_id,
+              organizerId: p.events.organizer_id || '',
+              tier: p.events.tier,
+              title: p.events.title,
+              shortDesc: p.events.short_desc || '',
+              longDesc: p.events.long_desc || '',
+              startAt: p.events.start_at,
+              endAt: p.events.end_at,
+              venueName: p.events.venue_name || '',
+              address: p.events.address || '',
+              lat: p.events.lat || 0,
+              lng: p.events.lng || 0,
+              categories: p.events.categories || [],
+              subcategories: p.events.subcategories || [],
+              mediaUrls: p.events.media_urls || [],
+              ticketUrl: p.events.ticket_url,
+              status: p.events.status,
+              counts: p.events.counts || {
+                likes: 0,
+                saves: 0,
+                comments: 0,
+                rsvpGoing: 0,
+                rsvpInterested: 0,
+              },
+            } : undefined,
+          },
+          lat: p.lat,
+          lng: p.lng,
+        }));
+
+      setActivityItems(items);
+    } catch (error) {
+      console.error('Error loading activity items:', error);
+      setActivityItems([]);
+    } finally {
+      setIsLoadingActivity(false);
+    }
+  };
+
   const [locationPermission, setLocationPermission] = useState<'prompt' | 'granted' | 'denied' | 'checking'>('prompt');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
@@ -365,7 +471,37 @@ export const MapScreen: React.FC = () => {
     }
   };
 
-  const eventGroups = useMemo(() => groupEventsByLocation(cityEvents, currentZoom), [cityEvents, currentZoom]);
+  const eventGroups = useMemo(() => {
+    if (!showEvents) return [];
+    return groupEventsByLocation(cityEvents, currentZoom);
+  }, [cityEvents, currentZoom, showEvents]);
+
+  // Group activity items by location (similar to events)
+  const activityGroups = useMemo(() => {
+    if (!showActivity || activityItems.length === 0) return [];
+    return groupEventsByLocation(
+      activityItems.map(item => ({
+        id: item.id,
+        lat: item.lat,
+        lng: item.lng,
+        startAt: item.post.createdAt,
+        endAt: item.post.expiresAt || item.post.createdAt,
+        venueName: item.post.placeName || item.post.address || 'Activity',
+        tier: 'community' as const,
+        cityId: item.post.cityId || '',
+        organizerId: '',
+        title: item.post.content.substring(0, 30) + (item.post.content.length > 30 ? '...' : ''),
+        shortDesc: '',
+        longDesc: '',
+        categories: [],
+        subcategories: [],
+        mediaUrls: [],
+        status: 'active' as const,
+        counts: { likes: item.post.likesCount, saves: 0, comments: item.post.commentsCount, rsvpGoing: 0, rsvpInterested: 0 },
+      })),
+      currentZoom
+    );
+  }, [activityItems, currentZoom, showActivity]);
 
   // Request location permission on mount
   useEffect(() => {
@@ -906,17 +1042,21 @@ export const MapScreen: React.FC = () => {
         };
 
         // Add markers for event groups (clustered or single)
-        if (!eventGroups || eventGroups.length === 0) return;
+        const allGroups = [...(eventGroups || []), ...(activityGroups || [])];
+        if (allGroups.length === 0) return;
 
       // Use requestAnimationFrame to batch marker creation and avoid blocking UI
       let index = 0;
       const addMarkersBatch = () => {
         const BATCH_SIZE = 10; // Add 10 markers per frame
-        const endIndex = Math.min(index + BATCH_SIZE, eventGroups.length);
+        const endIndex = Math.min(index + BATCH_SIZE, allGroups.length);
         
         for (let i = index; i < endIndex; i++) {
-          const group = eventGroups[i];
+          const group = allGroups[i];
           if (!group) continue;
+          
+          // Determine if this is an activity group (check if it's from activityGroups)
+          const isActivityGroup = i >= (eventGroups?.length || 0);
 
           try {
             if (!group || !group.location || !group.events || group.events.length === 0) continue;
@@ -928,6 +1068,44 @@ export const MapScreen: React.FC = () => {
             el.className = 'custom-marker';
             el.style.background = 'transparent';
             el.style.border = 'none';
+            
+            // For activity groups, use different styling
+            if (isActivityGroup) {
+              const activityColor = theme.accent;
+              const size = isCluster ? 40 : 32;
+              
+              el.innerHTML = `
+                <div class="relative flex items-center justify-center group cursor-pointer" style="width: ${size + 20}px; height: ${size + 20}px; padding: 10px;">
+                  <div class="absolute inset-0 rounded-full blur-md opacity-40 transition-all duration-300 group-hover:opacity-60" 
+                       style="background: ${activityColor}; width: ${size}px; height: ${size}px; left: 50%; top: 50%; transform: translate(-50%, -50%);"></div>
+                  <div class="relative z-10 rounded-full border-2 border-white/50 shadow-lg flex items-center justify-center" 
+                       style="width: ${size}px; height: ${size}px; background: ${activityColor}; left: 50%; top: 50%; transform: translate(-50%, -50%);">
+                    ${isCluster ? `<span class="text-white text-xs font-black">${groupEvents.length}</span>` : `<div style="width: 16px; height: 16px; background: white; border-radius: 2px;"></div>`}
+                  </div>
+                </div>
+              `;
+              
+              const marker = new mapboxgl.Marker(el)
+                .setLngLat([location.lng, location.lat])
+                .addTo(mapRef.current);
+              
+              el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (isCluster) {
+                  setSelectedCluster(group);
+                } else {
+                  // Find the activity item and show it
+                  const activityItem = activityItems.find(item => item.id === groupEvents[0]?.id);
+                  if (activityItem) {
+                    // Could show activity detail modal here
+                    console.log('Activity clicked:', activityItem);
+                  }
+                }
+              });
+              
+              markersRef.current[`activity-${i}`] = marker;
+              continue;
+            }
             
             // For clusters, use the most prominent event for styling
             const primaryEvent = groupEvents.find(e => e.tier === 'official') || groupEvents[0];
@@ -1105,7 +1283,7 @@ export const MapScreen: React.FC = () => {
         }
         
         index = endIndex;
-        if (index < eventGroups.length) {
+        if (index < allGroups.length) {
           requestAnimationFrame(addMarkersBatch);
         }
       };
@@ -1131,7 +1309,7 @@ export const MapScreen: React.FC = () => {
     } else {
       updateMarkers();
     }
-  }, [eventGroups, theme.accent, theme.surfaceAlt, theme.text, mapError, mapLoaded, currentZoom]);
+  }, [eventGroups, activityGroups, theme.accent, theme.surfaceAlt, theme.text, mapError, mapLoaded, currentZoom, showEvents, showActivity]);
 
   return (
     <div className="relative h-[calc(100vh-160px-80px)] overflow-hidden" style={{ backgroundColor: theme.background }}>
@@ -1273,9 +1451,24 @@ export const MapScreen: React.FC = () => {
             )}
           </AnimatePresence>
         </div>
-        <button className="p-3.5 rounded-2xl bg-black/60 backdrop-blur-xl border pointer-events-auto active:scale-95 transition-all shadow-2xl" style={{ borderColor: theme.border }}>
-          <Filter size={18} color="white" />
-        </button>
+        <div className="flex flex-col gap-2 pointer-events-auto">
+          <button 
+            onClick={() => setShowActivity(!showActivity)}
+            className={`p-3.5 rounded-2xl backdrop-blur-xl border active:scale-95 transition-all shadow-2xl ${showActivity ? 'bg-black/80' : 'bg-black/40'}`}
+            style={{ borderColor: showActivity ? theme.accent : theme.border }}
+            title="Toggle Activity"
+          >
+            <Activity size={18} color={showActivity ? theme.accent : 'white'} />
+          </button>
+          <button 
+            onClick={() => setShowEvents(!showEvents)}
+            className={`p-3.5 rounded-2xl backdrop-blur-xl border active:scale-95 transition-all shadow-2xl ${showEvents ? 'bg-black/80' : 'bg-black/40'}`}
+            style={{ borderColor: showEvents ? theme.accent : theme.border }}
+            title="Toggle Events"
+          >
+            <Calendar size={18} color={showEvents ? theme.accent : 'white'} />
+          </button>
+        </div>
       </div>
 
       <div className="absolute right-6 bottom-32 flex flex-col gap-3 z-20">
