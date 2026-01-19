@@ -425,23 +425,30 @@ export const MapScreen: React.FC = () => {
               }
             },
             (error) => {
-              console.log('Geolocation error:', error.code, error.message);
-              if (error.code === error.PERMISSION_DENIED) {
-                // User denied permission
-                setLocationPermission('denied');
-                setShowPermissionPrompt(false);
-              } else if (error.code === error.POSITION_UNAVAILABLE) {
+              // Handle POSITION_UNAVAILABLE gracefully - it's expected on desktop without GPS
+              if (error.code === error.POSITION_UNAVAILABLE) {
                 // Position unavailable (common on desktop without GPS)
-                // Don't show prompt - just silently fail and let user use search
-                console.warn('Position unavailable - desktop may not have GPS. User can search for location.');
+                // Don't log as error - this is expected behavior
+                console.log('Position unavailable - desktop may not have GPS. User can search for location.');
                 setLocationPermission('prompt');
                 setShowPermissionPrompt(false); // Don't show prompt for unavailable position
+                return; // Exit early - don't process other error handling
+              }
+              
+              // Log other errors appropriately
+              if (error.code === error.PERMISSION_DENIED) {
+                // User denied permission
+                console.log('Location permission denied by user');
+                setLocationPermission('denied');
+                setShowPermissionPrompt(false);
               } else if (error.code === error.TIMEOUT) {
                 // Timeout - show prompt so user can try again
+                console.warn('Location request timed out');
                 setLocationPermission('prompt');
                 setShowPermissionPrompt(true);
               } else {
-                // Other errors - show prompt
+                // Other errors
+                console.warn('Geolocation error:', error.code, error.message);
                 setLocationPermission('prompt');
                 setShowPermissionPrompt(true);
               }
@@ -526,23 +533,31 @@ export const MapScreen: React.FC = () => {
           }
         },
         (error) => {
-          console.error('Error getting location:', error.code, error.message);
-          if (error.code === error.PERMISSION_DENIED) {
-            // User denied permission
-            setLocationPermission('denied');
-            setShowPermissionPrompt(false);
-          } else if (error.code === error.POSITION_UNAVAILABLE) {
+          // Handle POSITION_UNAVAILABLE gracefully - it's expected on desktop without GPS
+          if (error.code === error.POSITION_UNAVAILABLE) {
             // Position unavailable (common on desktop without GPS)
-            console.warn('Position unavailable - desktop may not have GPS. User can search for location.');
+            // Don't log as error - this is expected behavior
+            console.log('Position unavailable - desktop may not have GPS. User can search for location.');
             setLocationPermission('prompt');
             setShowPermissionPrompt(false); // Don't show prompt for unavailable position
             // User can use search bar to find location
+            return; // Exit early - don't process other error handling
+          }
+          
+          // Log other errors
+          if (error.code === error.PERMISSION_DENIED) {
+            // User denied permission
+            console.log('Location permission denied by user');
+            setLocationPermission('denied');
+            setShowPermissionPrompt(false);
           } else if (error.code === error.TIMEOUT) {
             // Timeout - might need to check browser settings
+            console.warn('Location request timed out');
             setLocationPermission('prompt');
             setShowPermissionPrompt(true);
           } else {
-            // Other errors - show prompt again
+            // Other errors
+            console.warn('Geolocation error:', error.code, error.message);
             setLocationPermission('prompt');
             setShowPermissionPrompt(true);
           }
