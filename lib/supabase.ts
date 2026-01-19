@@ -80,14 +80,18 @@ export async function invokeSupabaseFunction<T = any>(
     // #endregion
 
     if (error) {
-      // Attach status code to error for better handling
+      // Attach status code to error for better handling - attach to multiple properties for compatibility
       (error as any).statusCode = statusCode;
+      (error as any).status = statusCode;
+      if ((error as any).context) {
+        (error as any).context.status = statusCode;
+      }
       
       // If 401, the function might not be accessible - handle gracefully without logging errors
       // The caller will handle this by skipping direct API fallback
       if (statusCode === 401 || error.message?.includes('401') || error.message?.includes('Unauthorized')) {
         // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:66',message:'401 Unauthorized error (handled gracefully)',data:{functionName,errorMessage:error.message,errorStatus:statusCode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:70',message:'401 Unauthorized error (handled gracefully)',data:{functionName,errorMessage:error.message,errorStatus:statusCode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         // Don't log as error - this is expected and handled gracefully by the caller
         if (import.meta.env.DEV) {
