@@ -1062,7 +1062,7 @@ export const MapScreen: React.FC = () => {
   }, [eventGroups, theme.accent, theme.surfaceAlt, theme.text, mapError, mapLoaded, currentZoom]);
 
   return (
-    <div className="relative h-[calc(100vh-160px)] overflow-hidden" style={{ backgroundColor: theme.background }}>
+    <div className="relative h-[calc(100vh-160px-80px)] overflow-hidden pb-20" style={{ backgroundColor: theme.background }}>
       {/* Real Mapbox Container */}
       <div 
         ref={mapContainerRef} 
@@ -1246,7 +1246,7 @@ export const MapScreen: React.FC = () => {
             initial={{ y: 300, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 300, opacity: 0 }}
-            className="absolute bottom-24 left-6 right-6 z-30 pointer-events-auto"
+            className="absolute bottom-28 left-6 right-6 z-30 pointer-events-auto"
           >
             <Card className="p-4 !bg-black/95 !backdrop-blur-3xl !border-white/20 shadow-2xl max-h-[60vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
@@ -1311,7 +1311,7 @@ export const MapScreen: React.FC = () => {
             initial={{ y: 300, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 300, opacity: 0 }}
-            className="absolute bottom-6 left-6 right-6 z-50"
+            className="absolute bottom-28 left-6 right-6 z-50"
           >
             <Card className="flex items-center gap-4 p-4 !bg-black/90 !backdrop-blur-3xl !border-white/10 relative shadow-2xl">
               <Link to={`/event/${selectedEvent.id}`} className="flex items-center gap-4 flex-1 overflow-hidden">
