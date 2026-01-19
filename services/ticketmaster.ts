@@ -411,6 +411,102 @@ export function convertTicketmasterEventToInnerCity(
     venue?.country?.name
   ].filter(Boolean).join(', ');
 
+  // Build rich description with all available information
+  const buildLongDesc = () => {
+    const parts: string[] = [];
+    
+    // Event name and type
+    parts.push(tmEvent.name);
+    
+    // Add attractions/performers
+    const attractions = tmEvent._embedded?.attractions || [];
+    if (attractions.length > 0) {
+      const attractionNames = attractions.map(a => a.name).join(', ');
+      if (attractions.length === 1) {
+        parts.push(`featuring ${attractionNames}`);
+      } else {
+        parts.push(`featuring ${attractionNames}`);
+      }
+    }
+    
+    // Add venue
+    if (venue?.name) {
+      parts.push(`at ${venue.name}`);
+    }
+    
+    // Add genre/subgenre details
+    const genreInfo: string[] = [];
+    if (classification?.segment?.name) {
+      genreInfo.push(classification.segment.name);
+    }
+    if (classification?.genre?.name && classification.genre.name !== classification?.segment?.name) {
+      genreInfo.push(classification.genre.name);
+    }
+    if (classification?.subGenre?.name) {
+      genreInfo.push(classification.subGenre.name);
+    }
+    if (genreInfo.length > 0) {
+      parts.push(`• ${genreInfo.join(' / ')}`);
+    }
+    
+    // Add date/time info
+    const eventDate = new Date(startDate);
+    const dateStr = eventDate.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    const timeStr = tmEvent.dates.start.localTime 
+      ? new Date(`${tmEvent.dates.start.localDate}T${tmEvent.dates.start.localTime}`).toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        })
+      : null;
+    
+    if (timeStr) {
+      parts.push(`• ${dateStr} at ${timeStr}`);
+    } else {
+      parts.push(`• ${dateStr}`);
+    }
+    
+    // Add price range if available
+    if (tmEvent.priceRanges && tmEvent.priceRanges.length > 0) {
+      const priceRange = tmEvent.priceRanges[0];
+      const minPrice = priceRange.min.toFixed(2);
+      const maxPrice = priceRange.max.toFixed(2);
+      const currency = priceRange.currency || 'USD';
+      const currencySymbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency;
+      
+      if (minPrice === maxPrice) {
+        parts.push(`• Tickets from ${currencySymbol}${minPrice}`);
+      } else {
+        parts.push(`• Tickets ${currencySymbol}${minPrice} - ${currencySymbol}${maxPrice}`);
+      }
+    }
+    
+    // Add age restrictions
+    if (tmEvent.ageRestrictions?.legalAgeEnforced) {
+      parts.push(`• Age restrictions may apply`);
+    }
+    
+    // Add promoter info
+    const promoter = tmEvent.promoter || tmEvent.promoters?.[0];
+    if (promoter?.name) {
+      parts.push(`• Presented by ${promoter.name}`);
+    }
+    
+    // Add venue location context
+    if (venue?.city?.name && venue?.state?.name) {
+      parts.push(`• Located in ${venue.city.name}, ${venue.state.name}`);
+    } else if (venue?.city?.name) {
+      parts.push(`• Located in ${venue.city.name}`);
+    }
+    
+    return parts.join(' ');
+  };
+
   return {
     id: `tm_${tmEvent.id}`,
     cityId,
@@ -418,9 +514,7 @@ export function convertTicketmasterEventToInnerCity(
     tier: 'official' as const,
     title: tmEvent.name,
     shortDesc: classification?.segment?.name || classification?.genre?.name || 'Live Event',
-    longDesc: tmEvent._embedded?.attractions?.[0]?.name 
-      ? `${tmEvent.name} featuring ${tmEvent._embedded.attractions[0].name} at ${venue?.name || 'TBA'}. ${classification?.segment?.name || ''} event.`
-      : `${tmEvent.name} at ${venue?.name || 'TBA'}. ${classification?.segment?.name || ''} event.`,
+    longDesc: buildLongDesc(),
     startAt: start.toISOString(),
     endAt: end.toISOString(),
     venueName: venue?.name || 'Venue TBA',

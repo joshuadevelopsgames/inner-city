@@ -300,6 +300,92 @@ export function convertEventbriteEventToInnerCity(
       }]
     : undefined;
 
+  // Build rich description with all available information
+  const buildLongDesc = () => {
+    // Start with Eventbrite's description if available, otherwise use name
+    const parts: string[] = [];
+    
+    if (ebEvent.description?.text && ebEvent.description.text.trim().length > 0) {
+      // Use Eventbrite's description as base, but enhance it
+      const desc = ebEvent.description.text.trim();
+      // Limit description length to avoid overly long text
+      const maxLength = 500;
+      if (desc.length > maxLength) {
+        parts.push(desc.substring(0, maxLength) + '...');
+      } else {
+        parts.push(desc);
+      }
+    } else {
+      parts.push(ebEvent.name.text);
+    }
+    
+    // Add category/format info
+    const categoryInfo: string[] = [];
+    if (ebEvent.category?.name) {
+      categoryInfo.push(ebEvent.category.name);
+    }
+    if (ebEvent.subcategory?.name && ebEvent.subcategory.name !== ebEvent.category?.name) {
+      categoryInfo.push(ebEvent.subcategory.name);
+    }
+    if (ebEvent.format?.name && !categoryInfo.includes(ebEvent.format.name)) {
+      categoryInfo.push(ebEvent.format.name);
+    }
+    if (categoryInfo.length > 0) {
+      parts.push(`• ${categoryInfo.join(' / ')}`);
+    }
+    
+    // Add date/time info
+    const eventDate = new Date(ebEvent.start.local);
+    const dateStr = eventDate.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    const timeStr = eventDate.toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    parts.push(`• ${dateStr} at ${timeStr}`);
+    
+    // Add venue info
+    if (ebEvent.venue?.name && !ebEvent.online_event) {
+      parts.push(`• At ${ebEvent.venue.name}`);
+      if (ebEvent.venue.address?.localized_area_display) {
+        parts.push(`• ${ebEvent.venue.address.localized_area_display}`);
+      }
+    } else if (ebEvent.online_event) {
+      parts.push(`• Online Event`);
+    }
+    
+    // Add price info
+    if (ebEvent.ticket_availability.minimum_ticket_price) {
+      const minPrice = ebEvent.ticket_availability.minimum_ticket_price.display;
+      const maxPrice = ebEvent.ticket_availability.maximum_ticket_price?.display;
+      
+      if (minPrice === maxPrice) {
+        parts.push(`• Tickets from ${minPrice}`);
+      } else if (maxPrice) {
+        parts.push(`• Tickets ${minPrice} - ${maxPrice}`);
+      } else {
+        parts.push(`• Tickets from ${minPrice}`);
+      }
+    }
+    
+    // Add capacity info if available
+    if (ebEvent.capacity && ebEvent.capacity > 0) {
+      parts.push(`• Capacity: ${ebEvent.capacity.toLocaleString()} attendees`);
+    }
+    
+    // Add organizer info
+    if (ebEvent.organizer?.name) {
+      parts.push(`• Organized by ${ebEvent.organizer.name}`);
+    }
+    
+    return parts.join(' ');
+  };
+
   return {
     id: `eb_${ebEvent.id}`,
     cityId,
@@ -307,7 +393,7 @@ export function convertEventbriteEventToInnerCity(
     tier,
     title: ebEvent.name.text,
     shortDesc: ebEvent.category?.name || ebEvent.format?.name || 'Event',
-    longDesc: ebEvent.description.text || ebEvent.name.text,
+    longDesc: buildLongDesc(),
     startAt: startDate.toISOString(),
     endAt: endDate.toISOString(),
     venueName: ebEvent.venue?.name || (ebEvent.online_event ? 'Online Event' : 'Venue TBA'),
