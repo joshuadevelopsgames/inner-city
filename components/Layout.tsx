@@ -351,11 +351,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             </AnimatePresence>
           </div>
           
-          <div className="flex items-center gap-2 ml-4 mt-2">
+          <div className="flex items-center gap-1.5 ml-4 mt-2">
             <img 
               src="/inner-city.png" 
               alt="Inner City Logo" 
-              className="w-8 h-8"
+              className="w-10 h-10"
             />
             <h1 className="brand-font text-base font-black italic tracking-tighter uppercase">INNER CITY</h1>
           </div>
