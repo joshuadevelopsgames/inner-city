@@ -487,6 +487,19 @@ const filterEventsByType = (events: Event[], eventType: string): Event[] => {
       if (hasExclusion) return false;
     }
     
+    // For food-drink, also exclude if it's clearly a music event by segment/genre
+    if (eventType === 'food-drink') {
+      // Exclude if it's a Music segment event
+      if (categories.some(cat => cat.toLowerCase().includes('music'))) {
+        return false;
+      }
+      // Exclude if it has music-related genres
+      const musicGenres = ['rock', 'pop', 'jazz', 'country', 'hip-hop', 'r&b', 'classical', 'folk', 'reggae', 'blues', 'metal', 'punk', 'alternative', 'indie', 'electronic', 'dance', 'house', 'techno', 'trance', 'dubstep', 'edm'];
+      if (subcategories.some(sub => musicGenres.some(genre => sub.toLowerCase().includes(genre)))) {
+        return false;
+      }
+    }
+    
     // Check keywords
     return typeConfig.keywords.some(keyword => searchText.includes(keyword.toLowerCase()));
   });
