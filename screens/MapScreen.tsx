@@ -776,28 +776,33 @@ export const MapScreen: React.FC = () => {
   useEffect(() => {
     if (!mapRef.current || mapError || !mapLoaded) return;
 
-    try {
-    const currentMarkers = markersRef.current;
-      // Don't remove user location marker or search location marker
-      Object.entries(currentMarkers).forEach(([key, m]) => {
-        try {
-          if (key !== '__userLocation' && key !== '__searchLocation' && m) {
-            (m as mapboxgl.Marker).remove();
-          }
-        } catch (e) {
-          console.warn('Error removing marker:', e);
-        }
-      });
-      // Keep user location marker and search location marker, clear others
-      const userMarker = (markersRef.current as any).__userLocation;
-      const searchMarker = (markersRef.current as any).__searchLocation;
-      markersRef.current = { 
-        ...(userMarker ? { __userLocation: userMarker } : {}),
-        ...(searchMarker ? { __searchLocation: searchMarker } : {})
-      };
+    // Wait for map to finish moving/zooming before updating markers
+    // This prevents markers from appearing at wrong positions during map movement
+    const updateMarkers = () => {
+      if (!mapRef.current || mapError || !mapLoaded) return;
 
-      // Add markers for event groups (clustered or single)
-      if (!eventGroups || eventGroups.length === 0) return;
+      try {
+        const currentMarkers = markersRef.current;
+        // Don't remove user location marker or search location marker
+        Object.entries(currentMarkers).forEach(([key, m]) => {
+          try {
+            if (key !== '__userLocation' && key !== '__searchLocation' && m) {
+              (m as mapboxgl.Marker).remove();
+            }
+          } catch (e) {
+            console.warn('Error removing marker:', e);
+          }
+        });
+        // Keep user location marker and search location marker, clear others
+        const userMarker = (markersRef.current as any).__userLocation;
+        const searchMarker = (markersRef.current as any).__searchLocation;
+        markersRef.current = { 
+          ...(userMarker ? { __userLocation: userMarker } : {}),
+          ...(searchMarker ? { __searchLocation: searchMarker } : {})
+        };
+
+        // Add markers for event groups (clustered or single)
+        if (!eventGroups || eventGroups.length === 0) return;
 
       // Use requestAnimationFrame to batch marker creation and avoid blocking UI
       let index = 0;
