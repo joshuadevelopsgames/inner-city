@@ -262,13 +262,22 @@ export const MapScreen: React.FC = () => {
   const selectedEvent = events.find(e => e.id === selectedEventId);
   const [selectedCluster, setSelectedCluster] = useState<{ location: { lat: number; lng: number }; events: Event[] } | null>(null);
 
-  // Group events by location (events within ~20 meters are considered same location)
-  const groupEventsByLocation = (events: Event[]) => {
+  // Group events by location with dynamic threshold based on zoom level
+  // Lower zoom (zoomed out) = larger threshold (more clustering)
+  // Higher zoom (zoomed in) = smaller threshold (less clustering)
+  const groupEventsByLocation = (events: Event[], zoomLevel: number) => {
     try {
       if (!events || events.length === 0) return [];
       
       const groups: Map<string, Event[]> = new Map();
-      const LOCATION_THRESHOLD = 0.00018; // ~20 meters in degrees
+      
+      // Dynamic threshold based on zoom level
+      // At zoom 8: ~50km threshold
+      // At zoom 12: ~20m threshold (current default)
+      // At zoom 16: ~5m threshold
+      const baseThreshold = 0.00018; // ~20 meters in degrees
+      const zoomFactor = Math.pow(2, 12 - zoomLevel); // Exponential scaling
+      const LOCATION_THRESHOLD = baseThreshold * zoomFactor;
 
       events.forEach(event => {
         try {
