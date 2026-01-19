@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import { UserPost, PostComment, EventAttendee, DirectMessage, EventReview, User } from '../types';
+import { UserPost, PostComment, EventAttendee, DirectMessage, EventReview, User, Event } from '../types';
 
 // ============================================================================
 // FOLLOWS
@@ -478,6 +478,66 @@ export async function getUserInterestedEvents(userId: string): Promise<string[]>
 
   if (error) throw error;
   return (data || []).map(item => item.event_id);
+}
+
+export async function getUserEvents(userId: string, status?: 'going' | 'interested' | 'maybe'): Promise<EventAttendee[]> {
+  let query = supabase
+    .from('event_attendees')
+    .select(`
+      *,
+      events!event_attendees_event_id_fkey(*)
+    `)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+
+  return (data || []).map((item: any) => ({
+    eventId: item.event_id,
+    userId: item.user_id,
+    status: item.status,
+    isPublic: item.is_public,
+    createdAt: item.created_at,
+    event: item.events ? {
+      id: item.events.id,
+      title: item.events.title,
+      shortDesc: item.events.short_desc,
+      longDesc: item.events.long_desc,
+      startAt: item.events.start_at,
+      endAt: item.events.end_at,
+      venueName: item.events.venue_name,
+      address: item.events.address,
+      cityId: item.events.city_id,
+      lat: item.events.lat,
+      lng: item.events.lng,
+      mediaUrls: item.events.media_urls || [],
+      categories: item.events.categories || [],
+      subcategories: item.events.subcategories || [],
+      organizerId: item.events.organizer_id,
+      ticketmasterId: item.events.external_id,
+      eventbriteId: item.events.external_id,
+      ticketUrl: item.events.ticket_url,
+      priceRanges: item.events.price_ranges,
+      ageRestrictions: item.events.age_restrictions,
+      ticketLimit: item.events.ticket_limit,
+      promoter: item.events.promoter,
+      venueDetails: item.events.venue_details,
+      salesDates: item.events.sales_dates,
+      timezone: item.events.timezone,
+      locale: item.events.locale,
+      onlineEvent: item.events.online_event,
+      capacity: item.events.capacity,
+      currency: item.events.currency,
+      tier: item.events.tier,
+      counts: item.events.counts || { likes: 0, saves: 0, comments: 0, rsvpGoing: 0, rsvpInterested: 0 },
+    } : undefined,
+  }));
 }
 
 // ============================================================================

@@ -1,18 +1,20 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../store';
 import { useNavigate, useParams } from 'react-router-dom';
 import { NeonButton, Card, Badge } from '../components/UI';
-import { Settings, LogOut, Grid, Bookmark, MessageSquare, Palette, X, Twitter, Instagram, UserPlus, UserMinus, MessageCircle } from 'lucide-react';
+import { Settings, LogOut, Grid, Bookmark, MessageSquare, Palette, X, Twitter, Instagram, UserPlus, UserMinus, MessageCircle, ChevronLeft, ChevronRight, Plus, Trash2, Calendar, MapPin } from 'lucide-react';
 import { THEMES } from '../theme';
 import { MOCK_CITIES } from '../mockData';
-import { motion, AnimatePresence } from 'framer-motion';
-import { followUser, unfollowUser, isFollowing, getFollowers, getFollowing } from '../services/social';
-import { User } from '../types';
+import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
+import { followUser, unfollowUser, isFollowing, getFollowers, getFollowing, getUserEvents } from '../services/social';
+import { User, EventAttendee } from '../types';
 import { supabase } from '../lib/supabase';
+import { getOptimizedImageUrl } from '../utils/imageOptimization';
 
 export const Profile: React.FC = () => {
   const { user: currentUser, theme, setThemeKey, logout, login, updateUser, activeCity } = useApp();
+  const isLight = theme.background === '#FFFFFF';
   const navigate = useNavigate();
   const { userId } = useParams();
   
@@ -26,11 +28,16 @@ export const Profile: React.FC = () => {
   
   const user = isViewingOtherProfile ? viewedUser : currentUser;
   
+  // Photo carousel state
+  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [userEvents, setUserEvents] = useState<EventAttendee[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
     displayName: user?.displayName || '',
     bio: user?.bio || '',
-    avatarUrl: user?.avatarUrl || '',
+    profilePhotos: user?.profilePhotos || [],
     twitter: user?.socials?.twitter || '',
     instagram: user?.socials?.instagram || '',
     interests: user?.interests?.join(', ') || '',
@@ -43,13 +50,29 @@ export const Profile: React.FC = () => {
       loadUserProfile();
       checkFollowingStatus();
       loadFollowCounts();
+      loadUserEvents();
     } else if (isViewingOtherProfile && !currentUser) {
       navigate('/login');
     } else if (!isViewingOtherProfile && currentUser) {
       // Load own follow counts
       loadFollowCounts();
+      loadUserEvents();
     }
   }, [userId, currentUser, isViewingOtherProfile]);
+
+  useEffect(() => {
+    if (user) {
+      setEditForm({
+        displayName: user.displayName || '',
+        bio: user.bio || '',
+        profilePhotos: user.profilePhotos || [user.avatarUrl],
+        twitter: user.socials?.twitter || '',
+        instagram: user.socials?.instagram || '',
+        interests: user.interests?.join(', ') || '',
+        homeCity: user.homeCity || '',
+      });
+    }
+  }, [user]);
 
   const loadFollowCounts = async () => {
     const targetUserId = userId || currentUser?.id;
@@ -76,11 +99,18 @@ export const Profile: React.FC = () => {
       
       if (error) throw error;
       if (data) {
+        const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.id}`;
+        const avatarUrl = data.avatar_url || defaultAvatar;
+        const profilePhotos = data.profile_photos && data.profile_photos.length > 0 
+          ? data.profile_photos 
+          : [avatarUrl];
+        
         setViewedUser({
           id: data.id,
           username: data.username,
           displayName: data.display_name,
-          avatarUrl: data.avatar_url,
+          avatarUrl: avatarUrl,
+          profilePhotos: profilePhotos,
           bio: data.bio,
           socials: {},
           interests: data.interests || [],
@@ -94,6 +124,21 @@ export const Profile: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
+    }
+  };
+
+  const loadUserEvents = async () => {
+    const targetUserId = userId || currentUser?.id;
+    if (!targetUserId) return;
+    
+    setIsLoadingEvents(true);
+    try {
+      const events = await getUserEvents(targetUserId);
+      setUserEvents(events);
+    } catch (error) {
+      console.error('Error loading user events:', error);
+    } finally {
+      setIsLoadingEvents(false);
     }
   };
 
@@ -128,7 +173,54 @@ export const Profile: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !currentUser) return;
+    
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      // Upload to Supabase Storage (you'll need to create a 'profile-photos' bucket)
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('profile-photos')
+        .upload(fileName, file, { upsert: false });
+
+      if (uploadError) {
+        // Fallback: use object URL for now (temporary)
+        const objectUrl = URL.createObjectURL(file);
+        const newPhotos = [...(editForm.profilePhotos || []), objectUrl];
+        setEditForm({ ...editForm, profilePhotos: newPhotos });
+        return;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('profile-photos')
+        .getPublicUrl(fileName);
+
+      const newPhotos = [...(editForm.profilePhotos || []), publicUrl];
+      setEditForm({ ...editForm, profilePhotos: newPhotos });
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      // Fallback: use object URL
+      const objectUrl = URL.createObjectURL(file);
+      const newPhotos = [...(editForm.profilePhotos || []), objectUrl];
+      setEditForm({ ...editForm, profilePhotos: newPhotos });
+    }
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    const newPhotos = editForm.profilePhotos.filter((_, i) => i !== index);
+    setEditForm({ ...editForm, profilePhotos: newPhotos });
+    if (currentPhotoIndex >= newPhotos.length && newPhotos.length > 0) {
+      setCurrentPhotoIndex(newPhotos.length - 1);
+    }
+  };
+
+  const handleSave = async () => {
     if (!user) return;
 
     const interestsArray = editForm.interests
@@ -136,10 +228,11 @@ export const Profile: React.FC = () => {
       .map(i => i.trim())
       .filter(i => i.length > 0);
 
-    updateUser({
+    await updateUser({
       displayName: editForm.displayName,
       bio: editForm.bio,
-      avatarUrl: editForm.avatarUrl,
+      profilePhotos: editForm.profilePhotos,
+      avatarUrl: editForm.profilePhotos[0] || user.avatarUrl,
       socials: {
         twitter: editForm.twitter,
         instagram: editForm.instagram,
@@ -160,23 +253,131 @@ export const Profile: React.FC = () => {
     );
   }
 
+  const photos = user.profilePhotos && user.profilePhotos.length > 0 
+    ? user.profilePhotos 
+    : [user.avatarUrl];
+
+  const goingEvents = userEvents.filter(e => e.status === 'going' && e.event);
+  const interestedEvents = userEvents.filter(e => e.status === 'interested' && e.event);
+
   return (
-    <div className="pb-20">
-      {/* Profile Header */}
-      <div className="px-6 pt-6 pb-10 flex flex-col items-center text-center">
-        <div className="relative mb-6">
-          <img src={user.avatarUrl} className="w-32 h-32 rounded-[2.5rem] object-cover border-4" style={{ borderColor: theme.accent }} />
-          {user.verified && (
-            <div className="absolute -bottom-2 -right-2 p-1.5 rounded-full" style={{ backgroundColor: theme.accent }}>
-              <Badge label="Official" type="official" />
+    <div className="pb-20 overflow-x-hidden">
+      {/* Photo Carousel - Dating App Style */}
+      <div className="relative w-full" style={{ height: '70vh', minHeight: '500px' }}>
+        <div className="relative w-full h-full overflow-hidden">
+          <AnimatePresence mode="wait">
+            <motion.img
+              key={currentPhotoIndex}
+              src={getOptimizedImageUrl(photos[currentPhotoIndex], 'hero')}
+              alt={`${user.displayName} photo ${currentPhotoIndex + 1}`}
+              className="w-full h-full object-cover"
+              initial={{ opacity: 0, x: 100 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -100 }}
+              transition={{ duration: 0.3 }}
+            />
+          </AnimatePresence>
+
+          {/* Photo Indicators */}
+          {photos.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+              {photos.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentPhotoIndex(index)}
+                  className={`h-1.5 rounded-full transition-all ${
+                    index === currentPhotoIndex ? 'w-8' : 'w-1.5'
+                  }`}
+                  style={{
+                    backgroundColor: index === currentPhotoIndex ? theme.accent : 'rgba(255, 255, 255, 0.4)',
+                  }}
+                />
+              ))}
             </div>
           )}
+
+          {/* Navigation Arrows */}
+          {photos.length > 1 && (
+            <>
+              {currentPhotoIndex > 0 && (
+                <button
+                  onClick={() => setCurrentPhotoIndex(currentPhotoIndex - 1)}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full backdrop-blur-md border"
+                  style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)', borderColor: theme.border }}
+                >
+                  <ChevronLeft size={24} color={theme.accent} />
+                </button>
+              )}
+              {currentPhotoIndex < photos.length - 1 && (
+                <button
+                  onClick={() => setCurrentPhotoIndex(currentPhotoIndex + 1)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full backdrop-blur-md border"
+                  style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)', borderColor: theme.border }}
+                >
+                  <ChevronRight size={24} color={theme.accent} />
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Gradient Overlay */}
+          <div 
+            className="absolute bottom-0 left-0 right-0 h-32"
+            style={{
+              background: `linear-gradient(to top, ${theme.background}, transparent)`,
+            }}
+          />
         </div>
-        <h2 className="text-3xl font-black italic tracking-tighter uppercase mb-1">{user.displayName}</h2>
-        <span className="text-sm font-bold opacity-50 mb-4">@{user.username}</span>
-        <p className="text-sm leading-relaxed max-w-[280px] opacity-70 mb-6">{user.bio}</p>
-        
-        <div className="flex gap-8 mb-8">
+      </div>
+
+      {/* Profile Info Card - Overlapping */}
+      <div 
+        className="relative -mt-20 mx-4 rounded-3xl p-6 border backdrop-blur-md"
+        style={{ 
+          backgroundColor: theme.surface,
+          borderColor: theme.border,
+        }}
+      >
+        {/* Name and Stats */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="text-2xl font-black italic tracking-tighter uppercase">{user.displayName}</h2>
+              {user.verified && (
+                <Badge label="Verified" type="official" />
+              )}
+            </div>
+            <span className="text-sm font-bold opacity-50">@{user.username}</span>
+          </div>
+          {!isViewingOtherProfile && (
+            <button 
+              onClick={() => {
+                setEditForm({
+                  displayName: user.displayName || '',
+                  bio: user.bio || '',
+                  profilePhotos: user.profilePhotos || [user.avatarUrl],
+                  twitter: user.socials?.twitter || '',
+                  instagram: user.socials?.instagram || '',
+                  interests: user.interests?.join(', ') || '',
+                  homeCity: user.homeCity || '',
+                });
+                setShowEditModal(true);
+              }}
+              className="p-2 rounded-full"
+              style={{ backgroundColor: theme.surfaceAlt }}
+            >
+              <Settings size={20} />
+            </button>
+          )}
+        </div>
+
+        {/* Bio */}
+        {user.bio && (
+          <p className="text-sm leading-relaxed opacity-70 mb-4">{user.bio}</p>
+        )}
+
+        {/* Stats */}
+        <div className="flex gap-6 mb-4 pb-4 border-b" style={{ borderColor: theme.border }}>
           <div className="text-center">
             <span className="block font-black text-xl italic tracking-tighter">{followersCount || '0'}</span>
             <span className="text-[10px] uppercase font-black tracking-widest opacity-40">Followers</span>
@@ -186,12 +387,13 @@ export const Profile: React.FC = () => {
             <span className="text-[10px] uppercase font-black tracking-widest opacity-40">Following</span>
           </div>
           <div className="text-center">
-            <span className="block font-black text-xl italic tracking-tighter">12</span>
-            <span className="text-[10px] uppercase font-black tracking-widest opacity-40">Created</span>
+            <span className="block font-black text-xl italic tracking-tighter">{goingEvents.length}</span>
+            <span className="text-[10px] uppercase font-black tracking-widest opacity-40">Going</span>
           </div>
         </div>
 
-        <div className="flex gap-3 w-full">
+        {/* Action Buttons */}
+        <div className="flex gap-3">
           {isViewingOtherProfile ? (
             <>
               <button
@@ -200,7 +402,7 @@ export const Profile: React.FC = () => {
                 className="flex-1 px-6 py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                 style={{ 
                   backgroundColor: isFollowingUser ? theme.surfaceAlt : theme.accent,
-                  color: isFollowingUser ? theme.text : (theme.background === '#FFFFFF' ? '#FFF' : '#000')
+                  color: isFollowingUser ? theme.text : (isLight ? '#FFF' : '#000')
                 }}
               >
                 {isFollowingUser ? (
@@ -225,32 +427,108 @@ export const Profile: React.FC = () => {
               </button>
             </>
           ) : (
-            <>
-              <NeonButton className="flex-1" onClick={() => {
-                setEditForm({
-                  displayName: user?.displayName || '',
-                  bio: user?.bio || '',
-                  avatarUrl: user?.avatarUrl || '',
-                  twitter: user?.socials?.twitter || '',
-                  instagram: user?.socials?.instagram || '',
-                  interests: user?.interests?.join(', ') || '',
-                  homeCity: user?.homeCity || '',
-                });
-                setShowEditModal(true);
-              }}>
-                Edit Profile
-              </NeonButton>
-              <button 
-                onClick={() => navigate('/settings')}
-                className="p-4 rounded-2xl transition-all active:scale-90" 
-                style={{ backgroundColor: theme.surfaceAlt }}
-              >
-                <Settings size={20} />
-              </button>
-            </>
+            <NeonButton className="flex-1" onClick={() => {
+              setEditForm({
+                displayName: user.displayName || '',
+                bio: user.bio || '',
+                profilePhotos: user.profilePhotos || [user.avatarUrl],
+                twitter: user.socials?.twitter || '',
+                instagram: user.socials?.instagram || '',
+                interests: user.interests?.join(', ') || '',
+                homeCity: user.homeCity || '',
+              });
+              setShowEditModal(true);
+            }}>
+              Edit Profile
+            </NeonButton>
           )}
         </div>
       </div>
+
+      {/* Events Section */}
+      {(goingEvents.length > 0 || interestedEvents.length > 0) && (
+        <div className="px-4 mt-6">
+          {goingEvents.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs font-black uppercase tracking-widest opacity-40 mb-3 px-2">Going To</h3>
+              <div className="space-y-3">
+                {goingEvents.slice(0, 3).map((attendee) => {
+                  const event = attendee.event!;
+                  return (
+                    <motion.div
+                      key={event.id}
+                      onClick={() => navigate(`/event/${event.id}`)}
+                      className="rounded-2xl overflow-hidden border cursor-pointer active:scale-98 transition-transform"
+                      style={{ backgroundColor: theme.surfaceAlt, borderColor: theme.border }}
+                    >
+                      {event.mediaUrls && event.mediaUrls[0] && (
+                        <img 
+                          src={getOptimizedImageUrl(event.mediaUrls[0], 'card')} 
+                          alt={event.title}
+                          className="w-full h-32 object-cover"
+                        />
+                      )}
+                      <div className="p-4">
+                        <h4 className="font-black text-sm uppercase tracking-tight mb-1 line-clamp-1">{event.title}</h4>
+                        <div className="flex items-center gap-2 text-xs opacity-60 mb-1">
+                          <Calendar size={12} />
+                          <span>{new Date(event.startAt).toLocaleDateString()}</span>
+                        </div>
+                        {event.venueName && (
+                          <div className="flex items-center gap-2 text-xs opacity-60">
+                            <MapPin size={12} />
+                            <span className="line-clamp-1">{event.venueName}</span>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {interestedEvents.length > 0 && (
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-widest opacity-40 mb-3 px-2">Interested In</h3>
+              <div className="space-y-3">
+                {interestedEvents.slice(0, 3).map((attendee) => {
+                  const event = attendee.event!;
+                  return (
+                    <motion.div
+                      key={event.id}
+                      onClick={() => navigate(`/event/${event.id}`)}
+                      className="rounded-2xl overflow-hidden border cursor-pointer active:scale-98 transition-transform"
+                      style={{ backgroundColor: theme.surfaceAlt, borderColor: theme.border }}
+                    >
+                      {event.mediaUrls && event.mediaUrls[0] && (
+                        <img 
+                          src={getOptimizedImageUrl(event.mediaUrls[0], 'card')} 
+                          alt={event.title}
+                          className="w-full h-32 object-cover"
+                        />
+                      )}
+                      <div className="p-4">
+                        <h4 className="font-black text-sm uppercase tracking-tight mb-1 line-clamp-1">{event.title}</h4>
+                        <div className="flex items-center gap-2 text-xs opacity-60 mb-1">
+                          <Calendar size={12} />
+                          <span>{new Date(event.startAt).toLocaleDateString()}</span>
+                        </div>
+                        {event.venueName && (
+                          <div className="flex items-center gap-2 text-xs opacity-60">
+                            <MapPin size={12} />
+                            <span className="line-clamp-1">{event.venueName}</span>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Edit Profile Modal */}
       <AnimatePresence>
@@ -282,20 +560,40 @@ export const Profile: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                {/* Avatar Preview */}
-                {editForm.avatarUrl && (
-                  <div className="flex justify-center mb-4">
-                    <img 
-                      src={editForm.avatarUrl} 
-                      alt="Avatar preview" 
-                      className="w-24 h-24 rounded-3xl object-cover border-2"
-                      style={{ borderColor: theme.accent }}
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
+                {/* Profile Photos */}
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2 block">
+                    Profile Photos
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    {editForm.profilePhotos.map((photo, index) => (
+                      <div key={index} className="relative aspect-square rounded-2xl overflow-hidden border" style={{ borderColor: theme.border }}>
+                        <img src={photo} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
+                        {editForm.profilePhotos.length > 1 && (
+                          <button
+                            onClick={() => handleRemovePhoto(index)}
+                            className="absolute top-1 right-1 p-1 rounded-full backdrop-blur-md"
+                            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+                          >
+                            <Trash2 size={14} color="#fff" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {editForm.profilePhotos.length < 6 && (
+                      <label className="aspect-square rounded-2xl border-2 border-dashed flex items-center justify-center cursor-pointer transition-all active:scale-95" style={{ borderColor: theme.border }}>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoUpload}
+                          className="hidden"
+                        />
+                        <Plus size={24} style={{ color: theme.accent }} />
+                      </label>
+                    )}
                   </div>
-                )}
+                  <p className="text-[10px] opacity-40">Add up to 6 photos</p>
+                </div>
 
                 {/* Display Name */}
                 <div>
@@ -324,21 +622,6 @@ export const Profile: React.FC = () => {
                     className="w-full px-4 py-3 rounded-2xl outline-none text-sm font-medium resize-none"
                     style={{ backgroundColor: theme.surfaceAlt, color: theme.text, border: `1px solid ${theme.border}` }}
                     placeholder="Tell us about yourself..."
-                  />
-                </div>
-
-                {/* Avatar URL */}
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2 block">
-                    Avatar URL
-                  </label>
-                  <input
-                    type="url"
-                    value={editForm.avatarUrl}
-                    onChange={(e) => setEditForm({ ...editForm, avatarUrl: e.target.value })}
-                    className="w-full px-4 py-3 rounded-2xl outline-none text-sm font-medium"
-                    style={{ backgroundColor: theme.surfaceAlt, color: theme.text, border: `1px solid ${theme.border}` }}
-                    placeholder="https://..."
                   />
                 </div>
 
@@ -422,60 +705,6 @@ export const Profile: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Theme Picker */}
-      <div className="px-6 mb-10">
-        <div className="flex items-center gap-2 mb-4">
-          <Palette size={18} color={theme.accent} />
-          <h3 className="text-xs font-black uppercase tracking-[0.2em] opacity-40">Quick Identity</h3>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {Object.entries(THEMES).slice(0, 4).map(([key, t]) => (
-            <button 
-              key={key} 
-              onClick={() => setThemeKey(key)}
-              className="p-4 rounded-2xl flex flex-col gap-2 border-2 transition-all active:scale-95"
-              style={{ 
-                backgroundColor: t.background, 
-                borderColor: theme.name === t.name ? theme.accent : 'transparent' 
-              }}
-            >
-              <div className="flex gap-1">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: t.accent }} />
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: t.surface }} />
-              </div>
-              <span 
-                className="text-[10px] font-black uppercase tracking-tight"
-                style={{ color: t.text }}
-              >
-                {t.name}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="px-6 mb-10">
-        <div className="flex justify-between mb-6">
-          <button className="flex flex-col items-center gap-2 opacity-100">
-            <Grid size={22} color={theme.accent} />
-            <div className="h-1 w-4 rounded-full" style={{ backgroundColor: theme.accent }} />
-          </button>
-          <button className="flex flex-col items-center gap-2 opacity-30">
-            <Bookmark size={22} />
-          </button>
-          <button className="flex flex-col items-center gap-2 opacity-30">
-            <MessageSquare size={22} />
-          </button>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-4">
-          {[1,2,3,4].map(i => (
-            <img key={i} src={`https://picsum.photos/seed/${i + 20}/300/300`} className="w-full aspect-square rounded-3xl object-cover grayscale hover:grayscale-0 transition-all cursor-pointer" />
-          ))}
-        </div>
-      </div>
     </div>
   );
 };

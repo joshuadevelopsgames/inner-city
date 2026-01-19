@@ -10,6 +10,7 @@ export interface User {
   username: string;
   displayName: string;
   avatarUrl: string;
+  profilePhotos?: string[]; // Array of photo URLs for dating-app style profiles
   bio: string;
   socials: { twitter?: string; instagram?: string };
   interests: string[];

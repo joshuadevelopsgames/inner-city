@@ -39,11 +39,18 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // Helper to convert Supabase profile to app User type
 const convertProfileToUser = (profile: any, authUser: any): User => {
+  const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`;
+  const avatarUrl = profile.avatar_url || defaultAvatar;
+  const profilePhotos = profile.profile_photos && profile.profile_photos.length > 0 
+    ? profile.profile_photos 
+    : [avatarUrl]; // Fallback to avatar_url if no photos
+  
   return {
     id: profile.id,
     username: profile.username || `user_${profile.id.substring(0, 8)}`,
     displayName: profile.display_name || authUser?.email?.split('@')[0] || 'User',
-    avatarUrl: profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`,
+    avatarUrl: avatarUrl,
+    profilePhotos: profilePhotos,
     bio: profile.bio || '',
     socials: {}, // Can be extended later
     interests: profile.interests || [],
@@ -397,7 +404,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Fetch profile and auth user in parallel with timeout
       const profileQuery = supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
+        .select('id, username, display_name, avatar_url, profile_photos, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
         .eq('id', userId)
         .maybeSingle();
       
@@ -499,7 +506,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await new Promise(resolve => setTimeout(resolve, 300));
           const { data: retryProfile } = await supabase
             .from('profiles')
-            .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
+            .select('id, username, display_name, avatar_url, profile_photos, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
             .eq('id', userId)
             .maybeSingle();
           
@@ -579,6 +586,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const profileUpdates: any = {};
       if (updates.displayName !== undefined) profileUpdates.display_name = updates.displayName;
       if (updates.avatarUrl !== undefined) profileUpdates.avatar_url = updates.avatarUrl;
+      if (updates.profilePhotos !== undefined) profileUpdates.profile_photos = updates.profilePhotos;
       if (updates.bio !== undefined) profileUpdates.bio = updates.bio;
       if (updates.interests !== undefined) profileUpdates.interests = updates.interests;
       if (updates.homeCity !== undefined) profileUpdates.home_city = updates.homeCity;
