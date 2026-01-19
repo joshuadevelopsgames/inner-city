@@ -411,7 +411,8 @@ const EVENT_TYPE_KEYWORDS: Record<string, { segments?: string[], genres?: string
     keywords: ['sports', 'game', 'match', 'fitness', 'athletic', 'sport', 'competition', 'hockey', 'basketball', 'football', 'baseball', 'soccer', 'vs', 'versus', 'nhl', 'nba', 'nfl', 'mlb']
   },
   'food-drink': {
-    keywords: ['food', 'drink', 'dining', 'restaurant', 'bar', 'culinary', 'cuisine', 'tasting', 'wine', 'beer', 'cocktail']
+    keywords: ['food', 'drink', 'dining', 'restaurant', 'culinary', 'cuisine', 'tasting', 'wine', 'beer', 'cocktail', 'food festival', 'food truck', 'brunch', 'dinner', 'lunch', 'cooking class', 'chef'],
+    exclude: ['music', 'concert', 'live music', 'band', 'artist', 'dj', 'performance', 'show', 'gig', 'tour', 'nightlife', 'club', 'dance', 'party']
   },
   'workshops': {
     keywords: ['workshop', 'class', 'learning', 'education', 'seminar', 'course', 'training', 'lesson']
