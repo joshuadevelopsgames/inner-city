@@ -13,8 +13,10 @@ import {
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getEventAttendees, setEventAttendance, removeEventAttendance, getUserEventAttendance, checkInToEvent, isCheckedIn, getEventCheckIns } from '../services/social';
-import { EventAttendee } from '../types';
+import { EventAttendee, User } from '../types';
 import { getOptimizedImageUrl } from '../utils/imageOptimization';
+import { supabase } from '../lib/supabase';
+import { User as UserIcon } from 'lucide-react';
 
 const TICKET_TIERS = [
   { id: 'early', name: 'Early Bird', price: '€15.00', perks: 'Entry before 23:00' },
@@ -40,6 +42,8 @@ export const EventDetail: React.FC = () => {
   const [isLoadingAttendees, setIsLoadingAttendees] = useState(false);
   const [isCheckedInState, setIsCheckedInState] = useState(false);
   const [checkIns, setCheckIns] = useState<EventAttendee[]>([]);
+  const [organizer, setOrganizer] = useState<User | null>(null);
+  const [isLoadingOrganizer, setIsLoadingOrganizer] = useState(false);
 
   // Load attendees and user attendance
   useEffect(() => {
@@ -51,7 +55,8 @@ export const EventDetail: React.FC = () => {
       loadCheckInStatus();
     }
     loadCheckIns();
-  }, [event?.id, user?.id]);
+    loadOrganizer();
+  }, [event?.id, event?.organizerId, user?.id]);
 
   const loadAttendees = async () => {
     if (!event || !id) return;
@@ -93,6 +98,50 @@ export const EventDetail: React.FC = () => {
       setCheckIns(checkInsData);
     } catch (error) {
       console.error('Error loading check-ins:', error);
+    }
+  };
+
+  const loadOrganizer = async () => {
+    if (!event || !event.organizerId || event.source !== 'user') return;
+    
+    setIsLoadingOrganizer(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, profile_photos, bio, interests, home_city, verified, created_at')
+        .eq('id', event.organizerId)
+        .single();
+
+      if (error) throw error;
+      
+      if (data) {
+        const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.id}`;
+        const avatarUrl = data.avatar_url || defaultAvatar;
+        const profilePhotos = (data.profile_photos && Array.isArray(data.profile_photos) && data.profile_photos.length > 0)
+          ? data.profile_photos 
+          : [avatarUrl];
+
+        setOrganizer({
+          id: data.id,
+          username: data.username,
+          displayName: data.display_name,
+          avatarUrl: avatarUrl,
+          profilePhotos: profilePhotos,
+          bio: data.bio || '',
+          socials: {},
+          interests: data.interests || [],
+          homeCity: data.home_city || '',
+          travelCities: [],
+          profileMode: 'full',
+          organizerTier: 'none',
+          verified: data.verified || false,
+          createdAt: data.created_at || new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error('Error loading organizer:', error);
+    } finally {
+      setIsLoadingOrganizer(false);
     }
   };
 
@@ -251,6 +300,48 @@ export const EventDetail: React.FC = () => {
 
       {/* Info Section */}
       <div className="px-6 mt-10 space-y-12">
+        {/* Organizer Section - Only for user-generated events */}
+        {event.source === 'user' && organizer && (
+          <div className="pb-6 border-b" style={{ borderColor: theme.border }}>
+            <h3 className="text-xs uppercase font-black tracking-[0.2em] mb-4 opacity-40">Event Organizer</h3>
+            <Link
+              to={`/profile/${organizer.id}`}
+              className="flex items-center gap-4 p-4 rounded-2xl border transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              style={{ backgroundColor: theme.surfaceAlt, borderColor: theme.border }}
+            >
+              {organizer.profilePhotos && organizer.profilePhotos.length > 0 ? (
+                <img
+                  src={getOptimizedImageUrl(organizer.profilePhotos[0], 'thumbnail')}
+                  alt={organizer.displayName}
+                  className="w-16 h-16 rounded-full object-cover border-2"
+                  style={{ borderColor: theme.accent }}
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full flex items-center justify-center border-2" style={{ backgroundColor: theme.accent + '20', borderColor: theme.accent }}>
+                  <UserIcon size={24} style={{ color: theme.accent }} />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="text-lg font-black italic tracking-tighter uppercase truncate">
+                    {organizer.displayName}
+                  </h4>
+                  {organizer.verified && (
+                    <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+                      <Check size={12} className="text-black" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs opacity-60 mb-1">@{organizer.username}</p>
+                {organizer.bio && (
+                  <p className="text-xs opacity-70 line-clamp-2">{organizer.bio}</p>
+                )}
+              </div>
+              <ChevronLeft size={20} className="opacity-40 rotate-180" />
+            </Link>
+          </div>
+        )}
+
         <div>
           <h3 className="text-xs uppercase font-black tracking-[0.2em] mb-5 opacity-40">The Narrative</h3>
           <p className="leading-relaxed opacity-70 font-medium text-sm border-l-2 pl-6" style={{ borderColor: theme.accent }}>
