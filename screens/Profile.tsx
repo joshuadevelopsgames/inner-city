@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../store';
 import { useNavigate, useParams } from 'react-router-dom';
 import { NeonButton, Card, Badge } from '../components/UI';
-import { Settings, LogOut, Grid, Bookmark, MessageSquare, Palette, X, Twitter, Instagram, UserPlus, UserMinus, MessageCircle, ChevronLeft, ChevronRight, Plus, Trash2, Calendar, MapPin } from 'lucide-react';
+import { Settings, LogOut, Grid, Bookmark, MessageSquare, Palette, X, Twitter, Instagram, UserPlus, UserMinus, MessageCircle, Plus, Trash2, Calendar, MapPin } from 'lucide-react';
 import { THEMES } from '../theme';
 import { MOCK_CITIES } from '../mockData';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
@@ -34,6 +34,7 @@ export const Profile: React.FC = () => {
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [longPressedIndex, setLongPressedIndex] = useState<number | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const dragX = useMotionValue(0);
   
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -347,25 +348,49 @@ export const Profile: React.FC = () => {
 
   return (
     <div className="pb-20 overflow-x-hidden">
-      {/* Photo Carousel - Dating App Style */}
+      {/* Photo Carousel - Dating App Style with Swipe */}
       <div className="relative w-full" style={{ height: '70vh', minHeight: '500px' }}>
-        <div className="relative w-full h-full overflow-hidden">
-          <AnimatePresence mode="wait">
-            <motion.img
-              key={currentPhotoIndex}
-              src={getOptimizedImageUrl(photos[currentPhotoIndex], 'hero')}
-              alt={`${user.displayName} photo ${currentPhotoIndex + 1}`}
-              className="w-full h-full object-cover"
-              initial={{ opacity: 0, x: 100 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -100 }}
-              transition={{ duration: 0.3 }}
-            />
-          </AnimatePresence>
+        <motion.div 
+          className="relative w-full h-full overflow-hidden"
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.2}
+          onDragEnd={(e, { offset, velocity }) => {
+            const swipe = Math.abs(offset.x) * velocity.x;
+            
+            if (swipe < -10000) {
+              // Swipe left - next photo
+              if (currentPhotoIndex < photos.length - 1) {
+                setCurrentPhotoIndex(currentPhotoIndex + 1);
+              }
+            } else if (swipe > 10000) {
+              // Swipe right - previous photo
+              if (currentPhotoIndex > 0) {
+                setCurrentPhotoIndex(currentPhotoIndex - 1);
+              }
+            }
+            
+            dragX.set(0);
+          }}
+        >
+          <div className="relative w-full h-full" style={{ display: 'flex', transform: `translateX(-${currentPhotoIndex * 100}%)` }}>
+            {photos.map((photo, index) => (
+              <motion.img
+                key={index}
+                src={getOptimizedImageUrl(photo, 'hero')}
+                alt={`${user.displayName} photo ${index + 1}`}
+                className="w-full h-full object-cover flex-shrink-0"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: index === currentPhotoIndex ? 1 : 0 }}
+                transition={{ duration: 0.3 }}
+                style={{ position: index === currentPhotoIndex ? 'relative' : 'absolute', top: 0, left: 0 }}
+              />
+            ))}
+          </div>
 
           {/* Photo Indicators */}
           {photos.length > 1 && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
               {photos.map((_, index) => (
                 <button
                   key={index}
@@ -381,38 +406,14 @@ export const Profile: React.FC = () => {
             </div>
           )}
 
-          {/* Navigation Arrows */}
-          {photos.length > 1 && (
-            <>
-              {currentPhotoIndex > 0 && (
-                <button
-                  onClick={() => setCurrentPhotoIndex(currentPhotoIndex - 1)}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full backdrop-blur-md border"
-                  style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)', borderColor: theme.border }}
-                >
-                  <ChevronLeft size={24} color={theme.accent} />
-                </button>
-              )}
-              {currentPhotoIndex < photos.length - 1 && (
-                <button
-                  onClick={() => setCurrentPhotoIndex(currentPhotoIndex + 1)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full backdrop-blur-md border"
-                  style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)', borderColor: theme.border }}
-                >
-                  <ChevronRight size={24} color={theme.accent} />
-                </button>
-              )}
-            </>
-          )}
-
           {/* Gradient Overlay */}
           <div 
-            className="absolute bottom-0 left-0 right-0 h-32"
+            className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
             style={{
               background: `linear-gradient(to top, ${theme.background}, transparent)`,
             }}
           />
-        </div>
+        </motion.div>
       </div>
 
       {/* Profile Info Card - Overlapping */}
