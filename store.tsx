@@ -33,6 +33,7 @@ interface AppContextType {
   isTicketmasterConnected: boolean;
   setTicketmasterConnected: (val: boolean) => void;
   isLoadingTicketmasterEvents: boolean;
+  updateEventInStore: (eventId: string, updates: Partial<Event>) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -869,7 +870,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     },
     isLoadingTicketmasterEvents,
-    refreshFeed
+    refreshFeed,
+    updateEventInStore
   };
 
   useEffect(() => {

@@ -27,7 +27,7 @@ const TICKET_TIERS = [
 export const EventDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { events, theme, addTicket, user, activeCity, isTicketmasterConnected, toggleSaveEvent, savedEventIds } = useApp();
+  const { events, theme, addTicket, user, activeCity, isTicketmasterConnected, toggleSaveEvent, savedEventIds, updateEventInStore } = useApp();
   const event = events.find(e => e.id === id);
 
   const [showTicketing, setShowTicketing] = useState(false);
@@ -158,6 +158,25 @@ export const EventDetail: React.FC = () => {
     }
   };
 
+  const refreshEventCounts = async () => {
+    if (!id) return;
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('id, counts')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      if (data && updateEventInStore) {
+        // Update the event in the store with fresh counts
+        updateEventInStore(id, { counts: data.counts });
+      }
+    } catch (error) {
+      console.error('Error refreshing event counts:', error);
+    }
+  };
+
   const handleRSVP = async (status: 'going' | 'interested') => {
     if (!user || !event || !id) return;
     
@@ -182,6 +201,8 @@ export const EventDetail: React.FC = () => {
           }
         }
       }
+      // Refresh event counts from database (trigger updates counts automatically)
+      await refreshEventCounts();
     } catch (error) {
       console.error('Error setting attendance:', error);
     }

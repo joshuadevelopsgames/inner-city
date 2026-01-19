@@ -360,7 +360,7 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
         <div className="flex items-center gap-8">
           <button className="flex items-center gap-2 text-[10px] font-black tracking-widest uppercase active:scale-90 transition-transform group">
             <Heart size={18} className="group-active:fill-current" />
-            {event.counts.likes}
+            {event.counts.rsvpInterested || 0}
           </button>
           <button className="flex items-center gap-2 text-[10px] font-black tracking-widest uppercase active:scale-90 transition-transform">
             <Share2 size={18} />

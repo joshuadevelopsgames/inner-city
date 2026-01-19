@@ -173,12 +173,12 @@ export const Profile: React.FC = () => {
       if (isFollowingUser) {
         await unfollowUser(currentUser.id, userId);
         setIsFollowingUser(false);
-        setFollowersCount(prev => Math.max(0, prev - 1));
       } else {
         await followUser(currentUser.id, userId);
         setIsFollowingUser(true);
-        setFollowersCount(prev => prev + 1);
       }
+      // Refresh follower counts from database (trigger updates counts automatically)
+      await loadFollowCounts();
     } catch (error) {
       console.error('Error toggling follow:', error);
     } finally {
