@@ -94,9 +94,13 @@ export async function invokeSupabaseFunction<T = any>(
     return data as T;
   } catch (error: any) {
     // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:66',message:'invokeSupabaseFunction error',data:{functionName,errorMessage:error?.message||'unknown',errorStatus:error?.status||'unknown',errorCode:error?.code||'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:95',message:'invokeSupabaseFunction error',data:{functionName,errorMessage:error?.message||'unknown',errorStatus:error?.statusCode||error?.status||'unknown',errorCode:error?.code||'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
-    console.error(`Error calling Supabase function ${functionName}:`, error);
+    // Don't log 401 errors as errors - they're handled gracefully
+    const statusCode = error?.statusCode || error?.status;
+    if (statusCode !== 401) {
+      console.error(`Error calling Supabase function ${functionName}:`, error);
+    }
     throw error;
   }
 }
