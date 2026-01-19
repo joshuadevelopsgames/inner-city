@@ -221,6 +221,7 @@ export const MapScreen: React.FC = () => {
   const [mapError, setMapError] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [currentZoom, setCurrentZoom] = useState<number>(12);
   
   // Safety check - ensure component is mounted before processing
   useEffect(() => {
@@ -336,7 +337,7 @@ export const MapScreen: React.FC = () => {
     }
   };
 
-  const eventGroups = useMemo(() => groupEventsByLocation(cityEvents), [cityEvents]);
+  const eventGroups = useMemo(() => groupEventsByLocation(cityEvents, currentZoom), [cityEvents, currentZoom]);
 
   // Request location permission on mount
   useEffect(() => {
@@ -958,7 +959,7 @@ export const MapScreen: React.FC = () => {
     } catch (error) {
       console.error('Error in marker creation useEffect:', error);
     }
-  }, [eventGroups, theme.accent, theme.surfaceAlt, theme.text, mapError, mapLoaded]);
+  }, [eventGroups, theme.accent, theme.surfaceAlt, theme.text, mapError, mapLoaded, currentZoom]);
 
   return (
     <div className="relative h-[calc(100vh-160px)] overflow-hidden" style={{ backgroundColor: theme.background }}>
