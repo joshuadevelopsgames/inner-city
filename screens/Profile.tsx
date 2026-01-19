@@ -351,46 +351,44 @@ export const Profile: React.FC = () => {
       {/* Photo Carousel - Dating App Style with Swipe */}
       <div className="relative w-full" style={{ height: '70vh', minHeight: '500px' }}>
         <motion.div 
-          className="relative w-full h-full overflow-hidden"
+          className="relative w-full h-full overflow-hidden touch-none"
           drag="x"
           dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.2}
+          dragElastic={0.1}
           onDragEnd={(e, { offset, velocity }) => {
-            const swipe = Math.abs(offset.x) * velocity.x;
+            const swipeThreshold = 50; // Minimum distance for swipe
+            const velocityThreshold = 500; // Minimum velocity for swipe
             
-            if (swipe < -10000) {
-              // Swipe left - next photo
+            // Swipe left (negative offset) = next photo
+            if (offset.x < -swipeThreshold || velocity.x < -velocityThreshold) {
               if (currentPhotoIndex < photos.length - 1) {
                 setCurrentPhotoIndex(currentPhotoIndex + 1);
               }
-            } else if (swipe > 10000) {
-              // Swipe right - previous photo
+            }
+            // Swipe right (positive offset) = previous photo
+            else if (offset.x > swipeThreshold || velocity.x > velocityThreshold) {
               if (currentPhotoIndex > 0) {
                 setCurrentPhotoIndex(currentPhotoIndex - 1);
               }
             }
-            
-            dragX.set(0);
           }}
         >
-          <div className="relative w-full h-full" style={{ display: 'flex', transform: `translateX(-${currentPhotoIndex * 100}%)` }}>
-            {photos.map((photo, index) => (
-              <motion.img
-                key={index}
-                src={getOptimizedImageUrl(photo, 'hero')}
-                alt={`${user.displayName} photo ${index + 1}`}
-                className="w-full h-full object-cover flex-shrink-0"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: index === currentPhotoIndex ? 1 : 0 }}
-                transition={{ duration: 0.3 }}
-                style={{ position: index === currentPhotoIndex ? 'relative' : 'absolute', top: 0, left: 0 }}
-              />
-            ))}
-          </div>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.img
+              key={currentPhotoIndex}
+              src={getOptimizedImageUrl(photos[currentPhotoIndex], 'hero')}
+              alt={`${user.displayName} photo ${currentPhotoIndex + 1}`}
+              className="absolute inset-0 w-full h-full object-cover"
+              initial={{ opacity: 0, x: 300 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -300 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+            />
+          </AnimatePresence>
 
           {/* Photo Indicators */}
           {photos.length > 1 && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10 pointer-events-auto">
               {photos.map((_, index) => (
                 <button
                   key={index}
@@ -408,7 +406,7 @@ export const Profile: React.FC = () => {
 
           {/* Gradient Overlay */}
           <div 
-            className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
+            className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none z-0"
             style={{
               background: `linear-gradient(to top, ${theme.background}, transparent)`,
             }}
