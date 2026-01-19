@@ -666,6 +666,10 @@ export const MapScreen: React.FC = () => {
         console.log("Mapbox loaded successfully");
         setMapError(false);
         setMapLoaded(true);
+        // Set initial zoom level
+        if (mapRef.current) {
+          setCurrentZoom(mapRef.current.getZoom());
+        }
         // Ensure map is visible after load
         if (mapContainerRef.current) {
           mapContainerRef.current.style.opacity = '1';
@@ -674,6 +678,21 @@ export const MapScreen: React.FC = () => {
 
       map.on('style.load', () => {
         console.log("Mapbox style loaded");
+      });
+
+      // Track zoom level changes for dynamic clustering
+      map.on('zoom', () => {
+        if (mapRef.current) {
+          const zoom = mapRef.current.getZoom();
+          setCurrentZoom(zoom);
+        }
+      });
+
+      map.on('zoomend', () => {
+        if (mapRef.current) {
+          const zoom = mapRef.current.getZoom();
+          setCurrentZoom(zoom);
+        }
       });
 
       // Close cluster/event selection when clicking on map (but not on markers)
