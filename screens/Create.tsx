@@ -112,6 +112,7 @@ export const CreateEvent: React.FC = () => {
         title: title.trim(),
         shortDesc: shortDesc.trim(),
         cityId: activeCity.id,
+        city: activeCity, // Pass city object to ensure it exists in DB
         startAt: dateTime.toISOString(),
         endAt: endDateTime.toISOString(),
         venueName: venueName.trim(),

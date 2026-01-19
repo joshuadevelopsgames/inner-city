@@ -4,7 +4,51 @@
  */
 
 import { supabase } from '../lib/supabase';
-import { Event } from '../types';
+import { Event, City } from '../types';
+
+/**
+ * Ensure a city exists in the database, create it if it doesn't
+ */
+async function ensureCityExists(city: City): Promise<string> {
+  // Check if city exists
+  const { data: existingCity } = await supabase
+    .from('cities')
+    .select('id')
+    .eq('id', city.id)
+    .single();
+
+  if (existingCity) {
+    return existingCity.id;
+  }
+
+  // City doesn't exist, create it
+  const { data: newCity, error } = await supabase
+    .from('cities')
+    .insert({
+      id: city.id,
+      name: city.name,
+      country: city.country,
+      coordinates: city.coordinates || null, // JSONB accepts objects directly
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    // If insert fails (e.g., constraint violation), try to get the city again
+    const { data: retryCity } = await supabase
+      .from('cities')
+      .select('id')
+      .eq('id', city.id)
+      .single();
+    
+    if (retryCity) {
+      return retryCity.id;
+    }
+    throw new Error(`Failed to ensure city exists: ${error.message}`);
+  }
+
+  return newCity.id;
+}
 
 export interface CreateEventData {
   title: string;
@@ -13,6 +57,7 @@ export interface CreateEventData {
   startAt: string; // ISO 8601
   endAt: string; // ISO 8601
   cityId: string;
+  city?: City; // Optional city object to ensure it exists in DB
   venueName: string;
   address?: string;
   lat?: number;
@@ -32,11 +77,22 @@ export async function createUserEvent(
   userId: string,
   eventData: CreateEventData
 ): Promise<Event> {
+  // Ensure city exists in database if city object is provided
+  let cityId = eventData.cityId;
+  if (eventData.city) {
+    try {
+      cityId = await ensureCityExists(eventData.city);
+    } catch (error) {
+      console.error('Error ensuring city exists:', error);
+      // Continue with original cityId if ensure fails
+    }
+  }
+
   const { data, error } = await supabase
     .from('events')
     .insert({
       source: 'user',
-      city_id: eventData.cityId,
+      city_id: cityId,
       organizer_id: userId,
       organization_id: eventData.organizationId || null,
       tier: eventData.tier || 'community',
@@ -58,7 +114,13 @@ export async function createUserEvent(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // If foreign key constraint error, provide helpful message
+    if (error.code === '23503' && error.message.includes('city_id')) {
+      throw new Error(`City with ID "${cityId}" does not exist in the database. Please ensure the city is created first.`);
+    }
+    throw error;
+  }
 
   return transformEvent(data);
 }
