@@ -533,10 +533,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isCacheValid = cached && (now - cached.timestamp) < CACHE_DURATION;
     
     if (isCacheValid && cached.events.length > 0) {
-      // Show cached events immediately for instant UI
-      setEvents(cached.events);
-      const ranked = smartRankEvents(cached.events, user);
-      setRankedEvents(ranked);
+      // Merge cached events with existing events (accumulate from all cities)
+      setEvents(prev => {
+        const existingIds = new Set(prev.map(e => e.id));
+        const newCachedEvents = cached.events.filter(e => !existingIds.has(e.id));
+        const merged = [...prev, ...newCachedEvents];
+        
+        // Rank with active city's events only
+        const cityEvents = merged.filter(e => e.cityId === activeCity.id);
+        const ranked = smartRankEvents(cityEvents, user);
+        setRankedEvents(ranked);
+        
+        return merged;
+      });
       setIsLoadingTicketmasterEvents(false);
       // Still refresh in background if cache is getting stale (> 3 minutes)
       if (now - cached.timestamp > 3 * 60 * 1000) {
@@ -547,12 +556,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Show mock events immediately for instant UI feedback while fetching
-    const mockEventsForCity = MOCK_EVENTS.filter(e => e.cityId === activeCity.id);
-    if (mockEventsForCity.length > 0) {
-      setEvents(mockEventsForCity);
+    // Merge mock events from all cities (not just active city) for map display
+    setEvents(prev => {
+      const existingIds = new Set(prev.map(e => e.id));
+      const newMockEvents = MOCK_EVENTS.filter(e => !existingIds.has(e.id));
+      const merged = [...prev, ...newMockEvents];
+      
+      // Rank with active city's events only
+      const mockEventsForCity = merged.filter(e => e.cityId === activeCity.id);
       const ranked = smartRankEvents(mockEventsForCity, user);
       setRankedEvents(ranked);
-    }
+      
+      return merged;
+    });
 
     // Fetch real events in background
     fetchCityEvents(false);
@@ -575,16 +591,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const upcomingEvents = filterUpcomingEvents(result.events);
         const sortedEvents = sortEventsByDate(upcomingEvents);
 
-        // Filter events to only show those for the current city
-        const cityEvents = sortedEvents.filter(e => e.cityId === activeCity.id);
-
         // Cache the events for this city with timestamp
-        cityEventsCache.current.set(cityKey, { events: cityEvents, timestamp: Date.now() });
+        cityEventsCache.current.set(cityKey, { events: sortedEvents, timestamp: Date.now() });
 
-        // Update events
-        setEvents(cityEvents);
+        // Merge events from all cities (accumulate instead of replace)
+        setEvents(prev => {
+          const existingIds = new Set(prev.map(e => e.id));
+          const newEvents = sortedEvents.filter(e => !existingIds.has(e.id));
+          return [...prev, ...newEvents];
+        });
         
-        // Rank events by user interests
+        // Rank events by user interests (filter to active city for ranking)
+        const cityEvents = sortedEvents.filter(e => e.cityId === activeCity.id);
         const ranked = smartRankEvents(cityEvents, user);
         setRankedEvents(ranked);
 
@@ -603,19 +621,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }).then((additionalResult) => {
             const additionalUpcoming = filterUpcomingEvents(additionalResult.events);
             const additionalSorted = sortEventsByDate(additionalUpcoming);
-            const additionalCityEvents = additionalSorted.filter(e => e.cityId === activeCity.id);
-            
-            // Merge with existing events, avoiding duplicates
+            // Merge with existing events, avoiding duplicates (accumulate from all cities)
             setEvents(prev => {
               const existingIds = new Set(prev.map(e => e.id));
-              const newEvents = additionalCityEvents.filter(e => !existingIds.has(e.id));
+              const newEvents = additionalSorted.filter(e => !existingIds.has(e.id));
               const merged = [...prev, ...newEvents];
               
-              // Update cache with merged events
-              cityEventsCache.current.set(cityKey, { events: merged, timestamp: Date.now() });
+              // Update cache with merged events for this city
+              const cachedCityEvents = merged.filter(e => e.cityId === activeCity.id);
+              cityEventsCache.current.set(cityKey, { events: cachedCityEvents, timestamp: Date.now() });
               
-              // Re-rank with merged events
-              const ranked = smartRankEvents(merged, user);
+              // Re-rank with active city's events only
+              const ranked = smartRankEvents(cachedCityEvents, user);
               setRankedEvents(ranked);
               
               return merged;
@@ -639,11 +656,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               convertTicketmasterEventToInnerCity(tmEvent, activeCity.id, 'ticketmaster')
             );
 
-            const cityEvents = tmEvents.filter(e => e.cityId === activeCity.id);
-            cityEventsCache.current.set(cityKey, { events: cityEvents, timestamp: Date.now() });
-            setEvents(cityEvents);
-            
-            const ranked = smartRankEvents(cityEvents, user);
+            // Merge with existing events, avoiding duplicates
+            setEvents(prev => {
+              const existingIds = new Set(prev.map(e => e.id));
+              const newEvents = tmEvents.filter(e => !existingIds.has(e.id));
+              const merged = [...prev, ...newEvents];
+              
+              // Cache events for this city
+              const cityEvents = merged.filter(e => e.cityId === activeCity.id);
+              cityEventsCache.current.set(cityKey, { events: cityEvents, timestamp: Date.now() });
+              
+              // Rank with active city's events only
+              const ranked = smartRankEvents(cityEvents, user);
+              setRankedEvents(ranked);
+              
+              return merged;
+            });
             setRankedEvents(ranked);
           }
         } catch (fallbackError) {
