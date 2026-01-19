@@ -247,7 +247,7 @@ export const MapScreen: React.FC = () => {
       const now = new Date();
       const { data: posts, error } = await supabase
         .from('user_posts')
-        .select('*, events(*), profiles(*)')
+        .select('*, events(*)')
         .eq('city_id', activeCity.id)
         .not('lat', 'is', null)
         .not('lng', 'is', null)
@@ -257,9 +257,20 @@ export const MapScreen: React.FC = () => {
 
       if (error) throw error;
 
+      // Fetch profiles separately (user_posts.user_id references auth.users, not profiles)
+      const userIds = [...new Set((posts || []).map((p: any) => p.user_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', userIds);
+
+      const profilesMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+
       const items = (posts || [])
         .filter((p: any) => p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng))
-        .map((p: any) => ({
+        .map((p: any) => {
+          const profile = profilesMap.get(p.user_id);
+          return {
           id: p.id,
           type: p.type || 'post',
           post: {
@@ -278,20 +289,20 @@ export const MapScreen: React.FC = () => {
             address: p.address,
             placeName: p.place_name,
             cityId: p.city_id,
-            user: p.profiles ? {
-              id: p.profiles.id,
-              username: p.profiles.username,
-              displayName: p.profiles.display_name,
-              avatarUrl: p.profiles.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.profiles.id}`,
-              bio: p.profiles.bio || '',
+            user: profile ? {
+              id: profile.id,
+              username: profile.username,
+              displayName: profile.display_name,
+              avatarUrl: profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`,
+              bio: profile.bio || '',
               socials: {},
-              interests: p.profiles.interests || [],
-              homeCity: p.profiles.home_city || '',
-              travelCities: p.profiles.travel_cities || [],
-              profileMode: p.profiles.profile_mode || 'full',
-              organizerTier: p.profiles.organizer_tier || 'none',
-              verified: p.profiles.verified || false,
-              createdAt: p.profiles.created_at,
+              interests: profile.interests || [],
+              homeCity: profile.home_city || '',
+              travelCities: profile.travel_cities || [],
+              profileMode: profile.profile_mode || 'full',
+              organizerTier: profile.organizer_tier || 'none',
+              verified: profile.verified || false,
+              createdAt: profile.created_at,
             } : undefined,
             event: p.events ? {
               id: p.events.id,
@@ -323,7 +334,8 @@ export const MapScreen: React.FC = () => {
           },
           lat: p.lat,
           lng: p.lng,
-        }));
+          };
+        });
 
       setActivityItems(items);
     } catch (error) {
