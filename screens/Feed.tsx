@@ -625,8 +625,8 @@ export const Feed: React.FC = () => {
         <div className="flex overflow-x-auto no-scrollbar px-6 gap-5">
           {(displayEvents.priority.length > 0 ? displayEvents.priority : cityEvents).slice(0, 5).map(event => (
             <Link key={event.id} to={`/event/${event.id}`} className="flex-shrink-0 w-20 flex flex-col items-center gap-2">
-              <div className="w-20 h-20 rounded-[1.8rem] border-2 p-1 active:scale-95 transition-all" style={{ borderColor: theme.accent }}>
-                <div className="w-full h-full rounded-[1.3rem] overflow-hidden relative">
+              <div className="w-20 h-20 rounded-full border-2 p-1 active:scale-95 transition-all" style={{ borderColor: theme.accent }}>
+                <div className="w-full h-full rounded-full overflow-hidden relative">
                    <img 
                      src={getOptimizedImageUrl(event.mediaUrls[0], 'thumbnail')} 
                      className="w-full h-full object-cover brightness-75"
