@@ -10,6 +10,103 @@ import { Event } from '../types';
 
 const MAPBOX_TOKEN = (import.meta as any).env?.VITE_MAPBOX_ACCESS_TOKEN || 'pk.eyJ1Ijoiam9zaHVhcm9hZGVyIiwiYSI6ImNta2l4MzduaTEyYzkzZXEzdHY5dmlxdDEifQ.Ch-Yoo2bvEGrdcr3ph_MaQ';
 
+/**
+ * Calculate days until event (negative if past, 0 if today, positive if future)
+ */
+const getDaysUntilEvent = (event: Event): number => {
+  try {
+    const now = new Date();
+    const eventDate = new Date(event.startAt);
+    const diffTime = eventDate.getTime() - now.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  } catch {
+    return 999; // Far future if date parsing fails
+  }
+};
+
+/**
+ * Convert hex color to RGB
+ */
+const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : null;
+};
+
+/**
+ * Get color for event based on how soon it is
+ * Today = red, then transitions through theme colors
+ */
+const getEventColor = (event: Event, theme: any): string => {
+  const daysUntil = getDaysUntilEvent(event);
+  
+  // Events happening today (0 days) = red
+  if (daysUntil <= 0) {
+    return '#FF0000'; // Bright red for today/past
+  }
+  
+  // Events 1-3 days away = red-orange gradient
+  if (daysUntil <= 3) {
+    const intensity = daysUntil / 3; // 0 to 1
+    // Interpolate from red (#FF0000) to orange (#FF6600)
+    const r = 255;
+    const g = Math.floor(102 * (1 - intensity));
+    const b = 0;
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+  
+  // Events 4-7 days away = orange to theme accent
+  if (daysUntil <= 7) {
+    const intensity = (daysUntil - 3) / 4; // 0 to 1
+    // Interpolate from orange (#FF6600) to theme accent
+    const accentRgb = hexToRgb(theme.accent);
+    if (accentRgb) {
+      const r = Math.floor(255 + (accentRgb.r - 255) * intensity);
+      const g = Math.floor(102 + (accentRgb.g - 102) * intensity);
+      const b = Math.floor(0 + (accentRgb.b - 0) * intensity);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    return '#FF6600';
+  }
+  
+  // Events 8-14 days away = theme accent to lighter variant
+  if (daysUntil <= 14) {
+    const intensity = (daysUntil - 7) / 7; // 0 to 1
+    const accentRgb = hexToRgb(theme.accent);
+    if (accentRgb) {
+      // Blend towards a lighter/muted version
+      const r = Math.floor(accentRgb.r + (accentRgb.r * 0.3) * intensity);
+      const g = Math.floor(accentRgb.g + (accentRgb.g * 0.3) * intensity);
+      const b = Math.floor(accentRgb.b + (accentRgb.b * 0.3) * intensity);
+      return `rgb(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)})`;
+    }
+    return theme.accent;
+  }
+  
+  // Events further than 14 days = muted theme color
+  return theme.accent + '80'; // Add transparency for far future events
+};
+
+/**
+ * Get color for cluster based on soonest event
+ */
+const getClusterColor = (events: Event[], theme: any): string => {
+  if (events.length === 0) return theme.accent;
+  
+  // Find the event happening soonest
+  const sortedByDate = [...events].sort((a, b) => {
+    const daysA = getDaysUntilEvent(a);
+    const daysB = getDaysUntilEvent(b);
+    return daysA - daysB;
+  });
+  
+  return getEventColor(sortedByDate[0], theme);
+};
+
 // High-fidelity fallback Map UI for when Mapbox is blocked or fails
 const SimulatedMap: React.FC<{ events: any[], onSelect: (id: string) => void, theme: any }> = ({ events, onSelect, theme }) => {
   return (
@@ -60,6 +157,7 @@ const SimulatedMap: React.FC<{ events: any[], onSelect: (id: string) => void, th
         const x = (event.id.charCodeAt(0) * 13) % 70 + 15;
         const y = (event.id.charCodeAt(event.id.length-1) * 11) % 60 + 20;
         const isOfficial = event.tier === 'official';
+        const eventColor = getEventColor(event, theme);
         
         return (
           <motion.button
@@ -72,9 +170,9 @@ const SimulatedMap: React.FC<{ events: any[], onSelect: (id: string) => void, th
             style={{ 
               left: `${x}%`, 
               top: `${y}%`,
-              backgroundColor: isOfficial ? theme.accent : theme.surfaceAlt,
+              backgroundColor: eventColor,
               borderColor: isOfficial ? '#FFF' : theme.border,
-              boxShadow: isOfficial ? `0 0 30px ${theme.accent}` : `0 0 10px rgba(0,0,0,0.5)`
+              boxShadow: `0 0 30px ${eventColor}80`
             }}
           >
             <MapPin size={18} color={isOfficial ? '#000' : theme.text} />
@@ -145,7 +243,15 @@ export const MapScreen: React.FC = () => {
   const cityEvents = useMemo(() => {
     try {
       // Show all events with valid coordinates on the map (not filtered by city)
-      return events.filter(e => e && typeof e.lat === 'number' && typeof e.lng === 'number' && !isNaN(e.lat) && !isNaN(e.lng));
+      // Filter out events with invalid coordinates (0,0 or NaN)
+      return events.filter(e => {
+        if (!e) return false;
+        if (typeof e.lat !== 'number' || typeof e.lng !== 'number') return false;
+        if (isNaN(e.lat) || isNaN(e.lng)) return false;
+        // Filter out events with coordinates of 0,0 (invalid coordinates)
+        if (e.lat === 0 && e.lng === 0) return false;
+        return true;
+      });
     } catch (e) {
       console.error('Error filtering city events:', e);
       return [];
@@ -693,8 +799,10 @@ export const MapScreen: React.FC = () => {
               const officialCount = groupEvents.filter(e => e.tier === 'official').length;
               const officialRatio = officialCount / eventCount;
               
-              // Determine primary color based on official events ratio
-              const primaryColor = officialRatio > 0.5 ? theme.accent : (officialRatio > 0 ? '#888' : '#666');
+              // Use time-based color (soonest event determines color)
+              const timeBasedColor = getClusterColor(groupEvents, theme);
+              // Blend with official ratio for visual distinction
+              const primaryColor = officialRatio > 0.5 ? timeBasedColor : timeBasedColor + 'CC';
               
               // Create visual segments for event diversity
               const categories = new Set(groupEvents.map(e => e.categories?.[0] || 'event').slice(0, 3));
@@ -709,9 +817,9 @@ export const MapScreen: React.FC = () => {
                   <!-- Pulsing ring for live events -->
                   ${hasLiveEvent ? `
                     <div class="absolute inset-0 rounded-full animate-ping opacity-40" 
-                         style="background-color: ${theme.accent}; animation-duration: 2s;"></div>
+                         style="background-color: ${timeBasedColor}; animation-duration: 2s;"></div>
                     <div class="absolute inset-0 rounded-full animate-pulse opacity-30" 
-                         style="background-color: ${theme.accent}; animation-duration: 1.5s;"></div>
+                         style="background-color: ${timeBasedColor}; animation-duration: 1.5s;"></div>
                   ` : ''}
                   
                   <!-- Main cluster circle with gradient -->
@@ -740,7 +848,7 @@ export const MapScreen: React.FC = () => {
                     <!-- Official events indicator -->
                     ${officialCount > 0 ? `
                       <div class="absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center shadow-lg" 
-                           style="background: ${theme.accent}; width: ${size * 0.25}px; height: ${size * 0.25}px;">
+                           style="background: ${timeBasedColor}; width: ${size * 0.25}px; height: ${size * 0.25}px;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="black" stroke="black" stroke-width="2.5">
                           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
                         </svg>
@@ -783,19 +891,23 @@ export const MapScreen: React.FC = () => {
                 isLive = false;
               }
 
+              // Use time-based color
+              const eventColor = getEventColor(event, theme);
+              const isOfficial = event.tier === 'official';
+
               el.innerHTML = `
                 <div class="relative flex items-center justify-center w-10 h-10 group cursor-pointer">
                   <div class="absolute inset-0 rounded-full blur-md opacity-40 transition-all duration-300 group-hover:opacity-100" 
-                       style="background: ${isOfficial ? theme.accent : '#666'}"></div>
+                       style="background: ${eventColor}"></div>
                   <div class="relative z-10 p-2 rounded-full border-2 border-white/10 transition-transform duration-300 group-hover:scale-110 shadow-2xl" 
-                       style="background-color: ${isOfficial ? theme.accent : theme.surfaceAlt}">
+                       style="background-color: ${eventColor}">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" 
                          stroke="${isOfficial ? '#000' : theme.text}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
                       <circle cx="12" cy="10" r="3"></circle>
                     </svg>
                   </div>
-                  ${isLive ? `<div class="absolute inset-0 rounded-full animate-ping opacity-60" style="background-color: ${theme.accent}"></div>` : ''}
+                  ${isLive ? `<div class="absolute inset-0 rounded-full animate-ping opacity-60" style="background-color: ${eventColor}"></div>` : ''}
                 </div>
               `;
 
