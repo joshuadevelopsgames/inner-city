@@ -39,6 +39,30 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
 };
 
 /**
+ * Convert RGB/RGBA color to hex with alpha
+ */
+const rgbToHexWithAlpha = (color: string, alpha: string = 'FF'): string => {
+  // If already hex, return with alpha
+  if (color.startsWith('#')) {
+    if (color.length === 7) return color + alpha;
+    if (color.length === 9) return color.slice(0, 7) + alpha;
+    return color;
+  }
+  
+  // If RGB, convert to hex
+  const rgbMatch = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (rgbMatch) {
+    const r = parseInt(rgbMatch[1]).toString(16).padStart(2, '0');
+    const g = parseInt(rgbMatch[2]).toString(16).padStart(2, '0');
+    const b = parseInt(rgbMatch[3]).toString(16).padStart(2, '0');
+    return `#${r}${g}${b}${alpha}`;
+  }
+  
+  // Fallback
+  return color;
+};
+
+/**
  * Get color for event based on how soon it is
  * Today = red, then transitions through theme colors
  */
@@ -1141,9 +1165,9 @@ export const MapScreen: React.FC = () => {
               const officialRatio = officialCount / eventCount;
               
               // Use time-based color (soonest event determines color)
-              const timeBasedColor = getClusterColor(groupEvents, theme);
-              // Blend with official ratio for visual distinction
-              const primaryColor = officialRatio > 0.5 ? timeBasedColor : timeBasedColor + 'CC';
+              const timeBasedColor = getClusterColor(groupEvents, theme) || theme.accent;
+              // Convert to hex with alpha for consistent formatting
+              const primaryColor = rgbToHexWithAlpha(timeBasedColor, officialRatio > 0.5 ? 'DD' : 'CC');
               
               // Create visual segments for event diversity
               const categories = new Set(groupEvents.map(e => e.categories?.[0] || 'event').slice(0, 3));
