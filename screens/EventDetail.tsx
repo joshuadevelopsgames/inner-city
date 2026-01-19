@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getEventAttendees, setEventAttendance, removeEventAttendance, getUserEventAttendance } from '../services/social';
+import { getEventAttendees, setEventAttendance, removeEventAttendance, getUserEventAttendance, checkInToEvent, isCheckedIn, getEventCheckIns } from '../services/social';
 import { EventAttendee } from '../types';
 import { getOptimizedImageUrl } from '../utils/imageOptimization';
 
@@ -38,6 +38,8 @@ export const EventDetail: React.FC = () => {
   const [userAttendance, setUserAttendance] = useState<EventAttendee | null>(null);
   const [showAttendees, setShowAttendees] = useState(false);
   const [isLoadingAttendees, setIsLoadingAttendees] = useState(false);
+  const [isCheckedInState, setIsCheckedInState] = useState(false);
+  const [checkIns, setCheckIns] = useState<EventAttendee[]>([]);
 
   // Load attendees and user attendance
   useEffect(() => {
@@ -46,7 +48,9 @@ export const EventDetail: React.FC = () => {
     loadAttendees();
     if (user) {
       loadUserAttendance();
+      loadCheckInStatus();
     }
+    loadCheckIns();
   }, [event?.id, user?.id]);
 
   const loadAttendees = async () => {
@@ -69,6 +73,39 @@ export const EventDetail: React.FC = () => {
       setUserAttendance(attendance);
     } catch (error) {
       console.error('Error loading user attendance:', error);
+    }
+  };
+
+  const loadCheckInStatus = async () => {
+    if (!event || !id || !user) return;
+    try {
+      const checkedIn = await isCheckedIn(id, user.id);
+      setIsCheckedInState(checkedIn);
+    } catch (error) {
+      console.error('Error loading check-in status:', error);
+    }
+  };
+
+  const loadCheckIns = async () => {
+    if (!event || !id) return;
+    try {
+      const checkInsData = await getEventCheckIns(id);
+      setCheckIns(checkInsData);
+    } catch (error) {
+      console.error('Error loading check-ins:', error);
+    }
+  };
+
+  const handleCheckIn = async () => {
+    if (!user || !event || !id) return;
+    
+    try {
+      await checkInToEvent(id, user.id);
+      setIsCheckedInState(true);
+      await loadCheckIns();
+      await loadUserAttendance();
+    } catch (error) {
+      console.error('Error checking in:', error);
     }
   };
 
@@ -263,6 +300,67 @@ export const EventDetail: React.FC = () => {
               Interested
             </button>
           </div>
+          
+          {/* Check-In Button - Show when event is live and user is going */}
+          {isLive && userAttendance?.status === 'going' && (
+            <button
+              onClick={handleCheckIn}
+              disabled={isCheckedInState}
+              className={`py-5 rounded-2xl font-black text-xs uppercase tracking-widest border active:scale-95 transition-all flex items-center justify-center gap-2 ${
+                isCheckedInState
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'border-white/10 bg-white/5 hover:bg-white/10'
+              }`}
+              style={isCheckedInState ? {} : {
+                borderColor: theme.accent,
+                backgroundColor: theme.accent + '20',
+              }}
+            >
+              {isCheckedInState ? (
+                <>
+                  <Check size={16} />
+                  Checked In
+                </>
+              ) : (
+                <>
+                  <Zap size={16} />
+                  Check In
+                </>
+              )}
+            </button>
+          )}
+          
+          {/* Check-Ins List */}
+          {checkIns.length > 0 && (
+            <div className="pt-4 border-t" style={{ borderColor: theme.border }}>
+              <h4 className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-3">
+                Checked In ({checkIns.length})
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {checkIns.slice(0, 10).map((checkIn) => (
+                  <div
+                    key={checkIn.userId}
+                    className="flex items-center gap-2 px-3 py-2 rounded-full"
+                    style={{ backgroundColor: theme.surfaceAlt }}
+                  >
+                    {checkIn.user?.avatarUrl && (
+                      <img
+                        src={checkIn.user.avatarUrl}
+                        alt={checkIn.user.displayName}
+                        className="w-6 h-6 rounded-full"
+                      />
+                    )}
+                    <span className="text-[9px] font-bold">{checkIn.user?.displayName || 'Anonymous'}</span>
+                  </div>
+                ))}
+                {checkIns.length > 10 && (
+                  <div className="px-3 py-2 rounded-full text-[9px] opacity-60" style={{ backgroundColor: theme.surfaceAlt }}>
+                    +{checkIns.length - 10} more
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Going Together Section */}

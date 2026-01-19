@@ -46,6 +46,7 @@ export interface Event {
   id: string;
   cityId: string;
   organizerId: string;
+  organizationId?: string; // Link to organization (event curator/promoter)
   tier: Tier;
   title: string;
   shortDesc: string;
@@ -177,7 +178,9 @@ export interface EventAttendee {
   status: 'going' | 'interested' | 'maybe';
   isPublic: boolean;
   createdAt: string;
+  checkedInAt?: string; // Timestamp when user checked in to the event
   user?: User;
+  event?: Event;
 }
 
 export interface DirectMessage {
@@ -199,4 +202,32 @@ export interface EventReview {
   reviewText?: string;
   createdAt: string;
   user?: User;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  cityId?: string;
+  logoUrl?: string;
+  coverImageUrl?: string;
+  websiteUrl?: string;
+  instagramHandle?: string;
+  twitterHandle?: string;
+  createdBy?: string;
+  verified: boolean;
+  eventCount: number;
+  followerCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationMember {
+  organizationId: string;
+  userId: string;
+  role: 'member' | 'admin' | 'owner';
+  joinedAt: string;
+  user?: User;
+  organization?: Organization;
 }
