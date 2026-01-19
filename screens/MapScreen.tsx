@@ -681,14 +681,25 @@ export const MapScreen: React.FC = () => {
       });
 
       // Track zoom level changes for dynamic clustering
+      // Only update on zoomend to avoid constant marker recreation during zoom
+      let zoomTimeout: NodeJS.Timeout | null = null;
       map.on('zoom', () => {
-        if (mapRef.current) {
-          const zoom = mapRef.current.getZoom();
-          setCurrentZoom(zoom);
-        }
+        // Debounce zoom updates to avoid constant recreation
+        if (zoomTimeout) clearTimeout(zoomTimeout);
+        zoomTimeout = setTimeout(() => {
+          if (mapRef.current) {
+            const zoom = mapRef.current.getZoom();
+            setCurrentZoom(zoom);
+          }
+        }, 150); // Wait 150ms after zoom stops changing
       });
 
       map.on('zoomend', () => {
+        // Clear any pending timeout and update immediately
+        if (zoomTimeout) {
+          clearTimeout(zoomTimeout);
+          zoomTimeout = null;
+        }
         if (mapRef.current) {
           const zoom = mapRef.current.getZoom();
           setCurrentZoom(zoom);
