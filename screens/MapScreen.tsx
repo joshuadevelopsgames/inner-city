@@ -1011,6 +1011,22 @@ export const MapScreen: React.FC = () => {
     } catch (error) {
       console.error('Error in marker creation useEffect:', error);
     }
+    };
+
+    // Wait for map to finish moving before updating markers
+    // This prevents markers from appearing at wrong positions during map movement
+    if (mapRef.current.isMoving()) {
+      const checkMoving = () => {
+        if (mapRef.current && !mapRef.current.isMoving()) {
+          updateMarkers();
+        } else if (mapRef.current) {
+          requestAnimationFrame(checkMoving);
+        }
+      };
+      requestAnimationFrame(checkMoving);
+    } else {
+      updateMarkers();
+    }
   }, [eventGroups, theme.accent, theme.surfaceAlt, theme.text, mapError, mapLoaded, currentZoom]);
 
   return (
