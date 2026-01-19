@@ -33,31 +33,27 @@ export async function invokeSupabaseFunction<T = any>(
   body?: any
 ): Promise<T> {
   try {
-    // Supabase's functions.invoke() automatically includes the anon key
-    // Don't override headers - let Supabase handle authentication
+    // Always include the anon key explicitly - Supabase Edge Functions require authentication
+    // Get current session for user auth, but always include anon key as fallback
+    const { data: { session } } = await supabase.auth.getSession();
+    
     const { data, error } = await supabase.functions.invoke(functionName, {
       body,
+      headers: {
+        // Always include anon key - required for Edge Functions
+        Authorization: session 
+          ? `Bearer ${session.access_token}` 
+          : `Bearer ${supabaseAnonKey}`,
+        // Also include as apikey header (some Supabase setups require this)
+        apikey: supabaseAnonKey,
+      },
     });
 
     if (error) {
-      // If 401, try with explicit anon key in Authorization header
+      // If 401, the function might not be accessible
       if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-        console.warn(`Function ${functionName} returned 401, retrying with explicit anon key...`);
-        
-        // Retry with explicit Authorization header
-        const { data: retryData, error: retryError } = await supabase.functions.invoke(functionName, {
-          body,
-          headers: {
-            Authorization: `Bearer ${supabaseAnonKey}`,
-          },
-        });
-        
-        if (retryError) {
-          console.error(`Function ${functionName} still failing after retry:`, retryError);
-          throw retryError;
-        }
-        
-        return retryData as T;
+        console.error(`Function ${functionName} returned 401. Check if function allows anonymous access.`);
+        console.error('Error details:', error);
       }
       throw error;
     }
