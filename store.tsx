@@ -402,9 +402,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // #endregion
     try {
       // Fetch profile and auth user in parallel with timeout
+      // Note: profile_photos column may not exist if migration hasn't been applied yet
       const profileQuery = supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url, profile_photos, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
+        .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
         .eq('id', userId)
         .maybeSingle();
       
@@ -506,7 +507,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           await new Promise(resolve => setTimeout(resolve, 300));
           const { data: retryProfile } = await supabase
             .from('profiles')
-            .select('id, username, display_name, avatar_url, profile_photos, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
+            .select('id, username, display_name, avatar_url, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
             .eq('id', userId)
             .maybeSingle();
           
@@ -699,7 +700,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const ranked = smartRankEvents(cityEvents, user);
         setRankedEvents(ranked);
 
-        console.log(`Fetched ${result.sources.total} events: ${result.sources.ticketmaster} from Ticketmaster`);
+        console.log(`Fetched ${result.sources.total} events: ${result.sources.ticketmaster} from Ticketmaster, ${result.sources.eventbrite} from Eventbrite`);
 
         // Fetch additional categories and Eventbrite in background (non-blocking)
         if (!silent) {

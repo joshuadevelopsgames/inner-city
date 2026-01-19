@@ -5,6 +5,14 @@
 
 import { searchEventsByCity as searchTicketmasterEvents, convertTicketmasterEventToInnerCity, getCountryCodeForCity } from './ticketmaster';
 import { searchEventsByCity as searchEventbriteEvents, convertEventbriteEventToInnerCity } from './eventbrite';
+
+// Helper to check if Eventbrite token exists (for logging)
+function hasEventbriteToken(): boolean {
+  const token = (import.meta as any).env?.VITE_EVENTBRITE_API_TOKEN || 
+         (typeof process !== 'undefined' && process.env?.VITE_EVENTBRITE_API_TOKEN) ||
+         null;
+  return !!token;
+}
 import { Event } from '../types';
 
 export interface AggregatorOptions {
