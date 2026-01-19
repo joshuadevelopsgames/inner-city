@@ -8,7 +8,7 @@ import {
   MessageCircle, AlertTriangle, PlayCircle, Users, 
   ShieldCheck, X, Check, Zap, CreditCard, Loader2,
   ExternalLink as LinkIcon, RefreshCw, UserPlus, Heart,
-  DollarSign, Calendar, Phone, Car, Wheelchair, Info, Ticket
+  DollarSign, Calendar, Phone, Car, Accessibility, Info, Ticket
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -444,7 +444,7 @@ export const EventDetail: React.FC = () => {
                 {event.venueDetails.accessibleSeatingDetail && (
                   <div className="space-y-1 pl-6">
                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest opacity-60">
-                      <Wheelchair size={12} />
+                      <Accessibility size={12} />
                       Accessibility
                     </div>
                     <div className="text-sm opacity-70">{event.venueDetails.accessibleSeatingDetail}</div>
