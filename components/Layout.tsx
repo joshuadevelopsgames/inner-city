@@ -354,7 +354,13 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           <h1 className="brand-font text-base font-black italic tracking-tighter uppercase ml-4 mt-2">INNER CITY</h1>
 
           <button 
-            onClick={() => navigate('/notifications')}
+            onClick={() => {
+              if (location.pathname === '/notifications') {
+                navigate(-1); // Go back if already on notifications page
+              } else {
+                navigate('/notifications');
+              }
+            }}
             className="p-2 rounded-full relative active:scale-90 transition-transform mt-2"
             style={{ backgroundColor: theme.surface }}
           >
