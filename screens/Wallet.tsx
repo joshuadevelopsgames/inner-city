@@ -6,6 +6,7 @@ import { Settings, Share2, Smartphone, ChevronRight, Clock, MapPin, ReceiptText,
 import { format } from 'date-fns';
 import { Ticket, Event } from '../types';
 import { motion } from 'framer-motion';
+import { getOptimizedImageUrl } from '../utils/imageOptimization';
 
 const TicketCard: React.FC<{ ticket: Ticket; event: Event; isHistory?: boolean }> = ({ ticket, event, isHistory }) => {
   const { theme } = useApp();
