@@ -654,19 +654,6 @@ export const Feed: React.FC = () => {
         </div>
       </div>
 
-      {/* Loading indicator */}
-      {isLoading && !isRefreshing && (
-        <div className="px-6 mb-10 flex items-center justify-center">
-          <div className="px-4 py-2 rounded-full backdrop-blur-md border" 
-               style={{ backgroundColor: theme.surface, borderColor: theme.border }}>
-            <div className="flex items-center gap-2">
-              <Loader2 size={16} className="animate-spin" style={{ color: theme.accent }} />
-              <span className="text-[10px] font-black uppercase tracking-widest">Loading...</span>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="mb-10 overflow-x-auto no-scrollbar px-6 flex gap-2">
         {moods.map(mood => (
           <button 
