@@ -198,7 +198,10 @@ export const EventDetail: React.FC = () => {
             <Badge label={event.categories[0]} />
           </div>
 
-          <h1 className="text-5xl font-black italic tracking-tighter leading-none uppercase mb-3">
+          <h1 
+            className="text-5xl font-black italic tracking-tighter leading-none uppercase mb-3"
+            style={{ textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)' }}
+          >
             {event.title}
           </h1>
           
