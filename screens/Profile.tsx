@@ -105,7 +105,7 @@ export const Profile: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, username, display_name, avatar_url, profile_photos, bio, interests, home_city, travel_cities, profile_mode, organizer_tier, verified, created_at')
         .eq('id', userId)
         .single();
       
@@ -113,8 +113,9 @@ export const Profile: React.FC = () => {
       if (data) {
         const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.id}`;
         const avatarUrl = data.avatar_url || defaultAvatar;
-        const profilePhotos = data.profile_photos && data.profile_photos.length > 0 
-          ? data.profile_photos 
+        // Use profile_photos from database, or fallback to avatar_url
+        const profilePhotos = data.profile_photos && Array.isArray(data.profile_photos) && data.profile_photos.length > 0 
+          ? data.profile_photos.filter((url: string) => url && url.trim() !== '') // Filter out empty strings
           : [avatarUrl];
         
         setViewedUser({
