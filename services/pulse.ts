@@ -276,48 +276,48 @@ export async function getPulseFeed(
         minScore: 5, // Only include events with decent scores
       });
 
-      // Interleave events: add 1 event every N items, but ensure events never exceed 20% of feed
+      // Interleave events sporadically throughout the feed
+      // Ensure events never exceed 20% of feed
       const maxEventCount = Math.floor(limit * 0.2);
-      let eventIndex = 0;
-      let eventCount = 0;
-
-      for (let i = eventInterleaveRatio; i < items.length && eventIndex < recommendedEvents.length && eventCount < maxEventCount; i += eventInterleaveRatio) {
-        if (eventIndex < recommendedEvents.length) {
-          const event = recommendedEvents[eventIndex];
-          items.splice(i, 0, {
+      const eventsToInsert = recommendedEvents.slice(0, maxEventCount);
+      
+      // Create random insertion positions (avoid clustering at top)
+      // Start inserting after first 5 items, distribute throughout feed
+      const insertionPositions: number[] = [];
+      const minGap = 3; // Minimum gap between events
+      const maxGap = eventInterleaveRatio * 2; // Maximum gap between events
+      
+      let currentPos = 5; // Start after first 5 items
+      while (currentPos < items.length && insertionPositions.length < eventsToInsert.length) {
+        insertionPositions.push(currentPos);
+        // Add random gap between events (more sporadic)
+        const gap = Math.floor(Math.random() * (maxGap - minGap + 1)) + minGap;
+        currentPos += gap;
+      }
+      
+      // Insert events at random positions (reverse order to maintain indices)
+      // Use current time for events so they don't sort to the top
+      const nowISO = now.toISOString();
+      insertionPositions.reverse().forEach((pos, idx) => {
+        if (idx < eventsToInsert.length && pos < items.length) {
+          const event = eventsToInsert[idx];
+          items.splice(pos, 0, {
             type: 'event',
             id: `rec-${event.id}`,
-            createdAt: event.startAt, // Use event start time for sorting
+            createdAt: nowISO, // Use current time so events stay where inserted
             data: event,
           });
-          eventIndex++;
-          eventCount++;
         }
-      }
-
-      // Add a "Recommended" module near the top (first 3-5 events)
-      if (recommendedEvents.length > 0) {
-        const topEvents = recommendedEvents.slice(0, 5).map((event) => ({
-          type: 'event' as const,
-          id: `rec-top-${event.id}`,
-          createdAt: event.startAt,
-          data: event,
-        }));
-        items.splice(3, 0, ...topEvents); // Insert after first 3 items
-      }
+      });
     } catch (error) {
       console.error('Error fetching recommended events:', error);
       // Continue without events if recommendation service fails
     }
   }
 
-  // 5. Re-sort after interleaving
-  items.sort((a, b) => {
-    // For events, use startAt; for others, use createdAt
-    const aTime = a.type === 'event' ? (a.data as Event).startAt : a.createdAt;
-    const bTime = b.type === 'event' ? (b.data as Event).startAt : b.createdAt;
-    return new Date(bTime).getTime() - new Date(aTime).getTime();
-  });
+  // 5. Don't re-sort after interleaving - keep events where they were inserted
+  // This maintains the sporadic distribution throughout the feed
+  // The feed is already sorted chronologically before event insertion
 
   // 6. Limit to requested size
   const limitedItems = items.slice(0, limit);
