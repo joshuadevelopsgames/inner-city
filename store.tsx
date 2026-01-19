@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { User, City, Event, ThemeTokens, Notification, Ticket, EventType } from './types';
 import { MOCK_USER, MOCK_CITIES, MOCK_EVENTS, MOCK_TICKETS } from './mockData';
 import { THEMES } from './theme';
@@ -767,6 +767,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
   }, [isTicketmasterConnected, activeCity.id, activeCity.name]);
+
+  // Refresh function for pull-to-refresh
+  const refreshFeed = useCallback(() => {
+    if (!isTicketmasterConnected) return Promise.resolve();
+    
+    const cityKey = `${activeCity.id}-${activeCity.name}`;
+    // Clear cache to force fresh fetch
+    cityEventsCache.current.delete(cityKey);
+    
+    // Trigger refresh by calling fetchCityEvents
+    setIsLoadingTicketmasterEvents(true);
+    
+    return aggregateCityEvents({
+      cityName: activeCity.name,
+      cityId: activeCity.id,
+      categories: ['music'],
+      limit: 15,
+      includeTicketmaster: true,
+      includeEventbrite: !!import.meta.env.VITE_EVENTBRITE_API_TOKEN,
+    }).then((result) => {
+      const upcomingEvents = filterUpcomingEvents(result.events);
+      const sortedEvents = sortEventsByDate(upcomingEvents);
+      
+      // Cache the events for this city with timestamp
+      cityEventsCache.current.set(cityKey, { events: sortedEvents, timestamp: Date.now() });
+      
+      // Replace events for this city (not merge, to show fresh data)
+      setEvents(prev => {
+        const otherCityEvents = prev.filter(e => e.cityId !== activeCity.id);
+        return [...otherCityEvents, ...sortedEvents];
+      });
+      
+      // Rank events by user interests
+      const ranked = smartRankEvents(sortedEvents, user);
+      setRankedEvents(ranked);
+      
+      setIsLoadingTicketmasterEvents(false);
+    }).catch((error) => {
+      console.error('Failed to refresh feed:', error);
+      setIsLoadingTicketmasterEvents(false);
+    });
+  }, [isTicketmasterConnected, activeCity.id, activeCity.name, user]);
 
   // Rank events whenever they or user interests change
   useEffect(() => {
