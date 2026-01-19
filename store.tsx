@@ -702,7 +702,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const ranked = smartRankEvents(cityEvents, user);
         setRankedEvents(ranked);
 
-        console.log(`Fetched ${result.sources.total} events: ${result.sources.ticketmaster} from Ticketmaster, ${result.sources.eventbrite} from Eventbrite`);
+        console.log(`Fetched ${result.sources.total} events: ${result.sources.ticketmaster} from Ticketmaster, ${result.sources.eventbrite} from Eventbrite, ${result.sources.user} from users`);
 
         // Fetch additional categories and Eventbrite in background (non-blocking)
         if (!silent) {

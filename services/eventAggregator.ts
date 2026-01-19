@@ -5,6 +5,7 @@
 
 import { searchEventsByCity as searchTicketmasterEvents, convertTicketmasterEventToInnerCity, getCountryCodeForCity } from './ticketmaster';
 import { searchEventsByCity as searchEventbriteEvents, convertEventbriteEventToInnerCity } from './eventbrite';
+import { fetchUserEvents } from './events';
 
 // Helper to check if Eventbrite token exists (for logging)
 function hasEventbriteToken(): boolean {
@@ -24,6 +25,7 @@ export interface AggregatorOptions {
   limit?: number; // Max events per source
   includeTicketmaster?: boolean;
   includeEventbrite?: boolean;
+  includeUserEvents?: boolean; // Include user-generated events from database
 }
 
 export interface AggregatorResult {
@@ -31,6 +33,7 @@ export interface AggregatorResult {
   sources: {
     ticketmaster: number;
     eventbrite: number;
+    user: number;
     total: number;
   };
 }
@@ -50,12 +53,14 @@ export async function aggregateCityEvents(
     limit = 50,
     includeTicketmaster = true,
     includeEventbrite = true,
+    includeUserEvents = true,
   } = options;
 
   const allEvents: Event[] = [];
   const sourceCounts = {
     ticketmaster: 0,
     eventbrite: 0,
+    user: 0,
     total: 0,
   };
 
@@ -143,6 +148,38 @@ export async function aggregateCityEvents(
     })();
 
     fetchPromises.push(eventbritePromise);
+  }
+
+  // Fetch user-generated events from database (in parallel with API calls)
+  if (includeUserEvents) {
+    const userEventsPromise = (async () => {
+      try {
+        if (import.meta.env.DEV) {
+          console.log(`User Events: Fetching events for ${cityName}...`);
+        }
+        const userEvents = await fetchUserEvents(cityId, {
+          limit: limit * 2, // Get more user events since they're local
+          startDate: startDate || new Date(),
+          endDate: endDate,
+          categories: categories,
+        });
+
+        if (userEvents && userEvents.length > 0) {
+          allEvents.push(...userEvents);
+          sourceCounts.user += userEvents.length;
+          if (import.meta.env.DEV) {
+            console.log(`User Events: Found ${userEvents.length} events for ${cityName}`);
+          }
+        }
+      } catch (error) {
+        // Only log in development
+        if (import.meta.env.DEV) {
+          console.warn('User events aggregation error:', error);
+        }
+      }
+    })();
+
+    fetchPromises.push(userEventsPromise);
   }
 
   // Wait for all fetches to complete in parallel

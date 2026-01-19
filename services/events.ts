@@ -195,6 +195,64 @@ export async function deleteUserEvent(eventId: string, userId: string): Promise<
   if (error) throw error;
 }
 
+/**
+ * Fetch user-generated events for a city
+ */
+export async function fetchUserEvents(
+  cityId: string,
+  options: {
+    limit?: number;
+    startDate?: Date;
+    endDate?: Date;
+    categories?: string[];
+  } = {}
+): Promise<Event[]> {
+  const {
+    limit = 100,
+    startDate,
+    endDate,
+    categories = [],
+  } = options;
+
+  let query = supabase
+    .from('events')
+    .select('*')
+    .eq('source', 'user')
+    .eq('city_id', cityId)
+    .eq('status', 'active')
+    .gte('start_at', startDate?.toISOString() || new Date().toISOString())
+    .order('start_at', { ascending: true })
+    .limit(limit);
+
+  if (endDate) {
+    query = query.lte('start_at', endDate.toISOString());
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Error fetching user events:', error);
+    return [];
+  }
+
+  if (!data || data.length === 0) {
+    return [];
+  }
+
+  // Filter by categories if provided
+  let filteredData = data;
+  if (categories.length > 0) {
+    filteredData = data.filter((event: any) => {
+      const eventCategories = (event.categories || []).map((c: string) => c.toLowerCase());
+      return categories.some(cat => 
+        eventCategories.includes(cat.toLowerCase())
+      );
+    });
+  }
+
+  return filteredData.map(transformEvent);
+}
+
 function transformEvent(data: any): Event {
   return {
     id: data.id,
