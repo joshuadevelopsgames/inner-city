@@ -179,6 +179,20 @@ export const Profile: React.FC = () => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      e.target.value = '';
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB');
+      e.target.value = '';
+      return;
+    }
+
     try {
       // Upload to Supabase Storage (you'll need to create a 'profile-photos' bucket)
       const fileExt = file.name.split('.').pop();
@@ -193,6 +207,7 @@ export const Profile: React.FC = () => {
         const objectUrl = URL.createObjectURL(file);
         const newPhotos = [...(editForm.profilePhotos || []), objectUrl];
         setEditForm({ ...editForm, profilePhotos: newPhotos });
+        e.target.value = '';
         return;
       }
 
@@ -203,12 +218,14 @@ export const Profile: React.FC = () => {
 
       const newPhotos = [...(editForm.profilePhotos || []), publicUrl];
       setEditForm({ ...editForm, profilePhotos: newPhotos });
+      e.target.value = '';
     } catch (error) {
       console.error('Error uploading photo:', error);
       // Fallback: use object URL
       const objectUrl = URL.createObjectURL(file);
       const newPhotos = [...(editForm.profilePhotos || []), objectUrl];
       setEditForm({ ...editForm, profilePhotos: newPhotos });
+      e.target.value = '';
     }
   };
 
