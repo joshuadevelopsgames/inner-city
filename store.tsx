@@ -11,6 +11,7 @@ import {
 import { aggregateCityEvents, filterUpcomingEvents, sortEventsByDate } from './services/eventAggregator';
 import { smartRankEvents, RankedEvents } from './services/eventRanking';
 import { supabase } from './lib/supabase';
+import { reverseGeocode, findNearestCity } from './services/geocoding';
 
 interface AppContextType {
   user: User | null;
@@ -70,8 +71,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.error('Failed to load active city from localStorage:', e);
     }
-    return MOCK_CITIES[0]; // Default to Berlin
+    return MOCK_CITIES[0]; // Default to Berlin (will be updated if auto-detection succeeds)
   });
+  
+  const [isDetectingCity, setIsDetectingCity] = useState(false);
   
   // Wrapper to persist city changes to localStorage
   const setActiveCity = (city: City | ((prev: City) => City)) => {

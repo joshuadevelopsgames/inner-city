@@ -1,8 +1,9 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../store';
 import { THEMES } from '../theme';
+import { CitySearchModal } from '../components/CitySearchModal';
 import { 
   ChevronLeft, 
   User, 
@@ -53,7 +54,8 @@ const SettingsItem: React.FC<SettingsItemProps> = ({ icon, label, subtext, onCli
 
 export const SettingsScreen: React.FC = () => {
   const navigate = useNavigate();
-  const { theme, setThemeKey, logout, activeCity, isTicketmasterConnected } = useApp();
+  const { theme, setThemeKey, logout, activeCity, setActiveCity, isTicketmasterConnected } = useApp();
+  const [showCitySearch, setShowCitySearch] = useState(false);
 
   return (
     <div className="min-h-screen pb-20" style={{ backgroundColor: theme.background }}>
@@ -118,6 +120,7 @@ export const SettingsScreen: React.FC = () => {
             icon={<MapPin size={18} />} 
             label="Home Turf" 
             subtext={activeCity.name} 
+            onClick={() => setShowCitySearch(true)}
           />
           <SettingsItem 
             icon={<Bell size={18} />} 
@@ -206,6 +209,15 @@ export const SettingsScreen: React.FC = () => {
         <p className="text-[8px] font-black uppercase tracking-widest opacity-5 mt-2">Relay protocol: active</p>
       </div>
 
+      {/* City Search Modal */}
+      <CitySearchModal
+        isOpen={showCitySearch}
+        onClose={() => setShowCitySearch(false)}
+        onSelectCity={(city) => {
+          setActiveCity(city);
+          setShowCitySearch(false);
+        }}
+      />
     </div>
   );
 };
