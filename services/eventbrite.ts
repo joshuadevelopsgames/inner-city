@@ -171,7 +171,7 @@ export async function searchEventsByOrganization(
       } catch (supabaseError: any) {
         const statusCode = supabaseError?.statusCode || supabaseError?.status || supabaseError?.context?.status;
         // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:160',message:'Edge Function failed, falling back',data:{organizationId,errorMessage:supabaseError?.message||'unknown',errorStatus:statusCode||'unknown',errorCode:supabaseError?.code||'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:171',message:'Edge Function failed, falling back',data:{organizationId,errorMessage:supabaseError?.message||'unknown',errorStatus:statusCode||'unknown',errorCode:supabaseError?.code||'unknown',errorName:supabaseError?.name,errorKeys:Object.keys(supabaseError||{}).slice(0,10)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         
         // If Edge Function returned 401 (Unauthorized) or 429 (Rate Limit), don't fallback to direct API
@@ -179,7 +179,7 @@ export async function searchEventsByOrganization(
         // 429 means we're already rate limited
         if (statusCode === 401 || statusCode === 429) {
           // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:177',message:'Edge Function auth/rate limit, skipping fallback',data:{organizationId,statusCode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:180',message:'Edge Function auth/rate limit, skipping fallback',data:{organizationId,statusCode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
           if (import.meta.env.DEV && statusCode === 401) {
             console.warn(`Eventbrite Edge Function returned 401. Edge Function needs anonymous access enabled in Supabase dashboard.`);
@@ -187,7 +187,19 @@ export async function searchEventsByOrganization(
           return { events: [], pagination: { object_count: 0, page_number: 1, page_size: 0, page_count: 0, has_more_items: false } };
         }
         
-        // Fallback to direct API if Supabase function fails (but not for 401/429)
+        // If we don't have a status code, assume it's a general error and don't fallback
+        // This prevents hitting rate limits when Edge Function has other issues
+        if (!statusCode) {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:189',message:'Edge Function failed with unknown status, skipping fallback',data:{organizationId,errorMessage:supabaseError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
+          if (import.meta.env.DEV) {
+            console.warn('Supabase function failed with unknown status, skipping direct API fallback to avoid rate limits:', supabaseError);
+          }
+          return { events: [], pagination: { object_count: 0, page_number: 1, page_size: 0, page_count: 0, has_more_items: false } };
+        }
+        
+        // Fallback to direct API if Supabase function fails (but not for 401/429/unknown)
         if (import.meta.env.DEV) {
           console.warn('Supabase function failed, falling back to direct API:', supabaseError);
         }

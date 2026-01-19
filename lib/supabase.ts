@@ -63,14 +63,20 @@ export async function invokeSupabaseFunction<T = any>(
       const errorContext = (error as any).context;
       if (errorContext?.status) {
         statusCode = errorContext.status;
+      } else if ((error as any).status) {
+        statusCode = (error as any).status;
       } else if (error.message?.match(/\b(\d{3})\b/)) {
         const match = error.message.match(/\b(\d{3})\b/);
         statusCode = match ? parseInt(match[1], 10) : undefined;
       }
+      // Log full error object for debugging
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:60',message:'Error details',data:{functionName,errorMessage:error?.message,errorName:error?.name,errorStack:error?.stack?.substring(0,200),errorKeys:Object.keys(error||{}),errorContext:JSON.stringify(errorContext||{}).substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     }
 
     // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:54',message:'After invoke',data:{functionName,hasError:!!error,hasData:!!data,errorMessage:error?.message||'none',errorStatus:statusCode||'none',errorContext:error?(error as any).context:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:67',message:'After invoke',data:{functionName,hasError:!!error,hasData:!!data,errorMessage:error?.message||'none',errorStatus:statusCode||'none',dataType:typeof data,dataKeys:data?Object.keys(data).slice(0,5):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
 
     if (error) {
