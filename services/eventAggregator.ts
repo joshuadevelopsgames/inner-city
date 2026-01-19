@@ -107,6 +107,9 @@ export async function aggregateCityEvents(
   if (includeEventbrite) {
     const eventbritePromise = (async () => {
       try {
+        if (import.meta.env.DEV) {
+          console.log(`Eventbrite: Fetching events for ${cityName}...`);
+        }
         const ebEvents = await searchEventbriteEvents(cityName, {
           status: 'live',
           page_size: limit,
@@ -120,6 +123,14 @@ export async function aggregateCityEvents(
 
           allEvents.push(...convertedEvents);
           sourceCounts.eventbrite += convertedEvents.length;
+          if (import.meta.env.DEV) {
+            console.log(`Eventbrite: Found ${ebEvents.length} events, converted ${convertedEvents.length} for ${cityName}`);
+          }
+        } else {
+          if (import.meta.env.DEV) {
+            const hasToken = hasEventbriteToken();
+            console.warn(`Eventbrite: No events returned for ${cityName} (token: ${hasToken ? 'present' : 'missing'})`);
+          }
         }
         // Silently continue if no events (token might be invalid or not configured)
       } catch (error) {
