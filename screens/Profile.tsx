@@ -205,19 +205,30 @@ export const Profile: React.FC = () => {
     }
 
     try {
-      // Upload to Supabase Storage (you'll need to create a 'profile-photos' bucket)
-      const fileExt = file.name.split('.').pop();
+      // Upload to Supabase Storage
+      const fileExt = file.name.split('.').pop() || 'jpg';
       const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
       
+      // Show loading state (you could add a loading indicator here)
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('profile-photos')
-        .upload(fileName, file, { upsert: false });
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
       if (uploadError) {
-        // Fallback: use object URL for now (temporary)
-        const objectUrl = URL.createObjectURL(file);
-        const newPhotos = [...(editForm.profilePhotos || []), objectUrl];
-        setEditForm({ ...editForm, profilePhotos: newPhotos });
+        console.error('Upload error:', uploadError);
+        
+        // If bucket doesn't exist, provide helpful error
+        if (uploadError.message?.includes('Bucket not found') || uploadError.message?.includes('not found')) {
+          alert('Storage bucket not configured. Please contact support or check Supabase setup.');
+          e.target.value = '';
+          return;
+        }
+        
+        // For other errors, try fallback
+        alert('Failed to upload photo. Please try again.');
         e.target.value = '';
         return;
       }
@@ -227,15 +238,13 @@ export const Profile: React.FC = () => {
         .from('profile-photos')
         .getPublicUrl(fileName);
 
+      // Add to form state
       const newPhotos = [...(editForm.profilePhotos || []), publicUrl];
       setEditForm({ ...editForm, profilePhotos: newPhotos });
       e.target.value = '';
     } catch (error) {
       console.error('Error uploading photo:', error);
-      // Fallback: use object URL
-      const objectUrl = URL.createObjectURL(file);
-      const newPhotos = [...(editForm.profilePhotos || []), objectUrl];
-      setEditForm({ ...editForm, profilePhotos: newPhotos });
+      alert('An error occurred while uploading the photo. Please try again.');
       e.target.value = '';
     }
   };
