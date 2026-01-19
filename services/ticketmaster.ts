@@ -349,6 +349,31 @@ export async function getEventDetails(eventId: string): Promise<TicketmasterEven
 }
 
 /**
+ * Get best quality image from Ticketmaster images array
+ * Prioritizes 16:9 ratio and largest size
+ */
+function getBestImage(images: Array<{ratio: string; url: string; width: number; height: number; fallback: boolean}> | undefined): string | null {
+  if (!images || images.length === 0) return null;
+  
+  // Filter out fallback images
+  const validImages = images.filter(img => !img.fallback);
+  if (validImages.length === 0) return null;
+  
+  // Prefer 16:9 ratio images, sorted by size (largest first)
+  const ratio16_9 = validImages
+    .filter(img => img.ratio === '16_9')
+    .sort((a, b) => (b.width * b.height) - (a.width * a.height));
+  
+  if (ratio16_9.length > 0) {
+    return ratio16_9[0].url;
+  }
+  
+  // Fallback to largest available image
+  const sortedBySize = validImages.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+  return sortedBySize[0].url;
+}
+
+/**
  * Convert Ticketmaster event to Inner City Event format
  */
 export function convertTicketmasterEventToInnerCity(
@@ -359,10 +384,8 @@ export function convertTicketmasterEventToInnerCity(
   const venue = tmEvent._embedded?.venues?.[0];
   const classification = tmEvent.classifications?.[0];
   
-  // Get primary image or first available image
-  const imageUrl = tmEvent.images?.find(img => img.ratio === '16_9' && !img.fallback)?.url ||
-                   tmEvent.images?.find(img => !img.fallback)?.url ||
-                   'https://picsum.photos/800/600';
+  // Get primary image - prefer largest 16:9 image, then largest available
+  const imageUrl = getBestImage(tmEvent.images) || 'https://picsum.photos/800/600';
 
   const startDate = tmEvent.dates.start.dateTime || 
                    `${tmEvent.dates.start.localDate}T${tmEvent.dates.start.localTime || '20:00:00'}`;
@@ -372,9 +395,10 @@ export function convertTicketmasterEventToInnerCity(
   const end = new Date(start);
   end.setHours(end.getHours() + 4);
 
-  // Get all images, not just the first one
+  // Get all images sorted by size (largest first) for better quality
   const allImages = tmEvent.images
     ?.filter(img => !img.fallback)
+    .sort((a, b) => (b.width * b.height) - (a.width * a.height))
     .map(img => img.url) || [imageUrl];
 
   // Build full address
