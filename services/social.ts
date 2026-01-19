@@ -296,8 +296,9 @@ export async function checkPostLiked(postId: string, userId: string): Promise<bo
     .select('user_id')
     .eq('post_id', postId)
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
+  // PGRST116 is "not found" which is fine - means post is not liked
   if (error && error.code !== 'PGRST116') throw error;
   return !!data;
 }
@@ -463,10 +464,7 @@ export async function getEventAttendees(
 ): Promise<EventAttendee[]> {
   let query = supabase
     .from('event_attendees')
-    .select(`
-      *,
-      profiles!event_attendees_user_id_fkey(*)
-    `)
+    .select('*')
     .eq('event_id', eventId)
     .eq('is_public', true);
 
@@ -477,29 +475,46 @@ export async function getEventAttendees(
   const { data, error } = await query;
 
   if (error) throw error;
-  return (data || []).map((item: any) => ({
-    eventId: item.event_id,
-    userId: item.user_id,
-    status: item.status,
-    isPublic: item.is_public,
-    createdAt: item.created_at,
-    checkedInAt: item.checked_in_at,
-    user: item.profiles ? {
-      id: item.profiles.id,
-      username: item.profiles.username,
-      displayName: item.profiles.display_name,
-      avatarUrl: item.profiles.avatar_url,
-      bio: item.profiles.bio,
-      socials: {},
-      interests: item.profiles.interests || [],
-      homeCity: item.profiles.home_city || '',
-      travelCities: item.profiles.travel_cities || [],
-      profileMode: item.profiles.profile_mode || 'full',
-      organizerTier: item.profiles.organizer_tier || 'none',
-      verified: item.profiles.verified || false,
-      createdAt: item.profiles.created_at,
-    } : undefined,
-  }));
+
+  // Fetch profiles separately
+  if (data && data.length > 0) {
+    const userIds = [...new Set(data.map((item: any) => item.user_id))];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', userIds);
+
+    const profilesMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+
+    return (data || []).map((item: any) => {
+      const profile = profilesMap.get(item.user_id);
+      return {
+        eventId: item.event_id,
+        userId: item.user_id,
+        status: item.status,
+        isPublic: item.is_public,
+        createdAt: item.created_at,
+        checkedInAt: item.checked_in_at,
+        user: profile ? {
+          id: profile.id,
+          username: profile.username,
+          displayName: profile.display_name,
+          avatarUrl: profile.avatar_url,
+          bio: profile.bio,
+          socials: {},
+          interests: profile.interests || [],
+          homeCity: profile.home_city || '',
+          travelCities: profile.travel_cities || [],
+          profileMode: profile.profile_mode || 'full',
+          organizerTier: profile.organizer_tier || 'none',
+          verified: profile.verified || false,
+          createdAt: profile.created_at,
+        } : undefined,
+      };
+    });
+  }
+
+  return [];
 }
 
 // ============================================================================
@@ -536,38 +551,52 @@ export async function checkInToEvent(eventId: string, userId: string): Promise<v
 export async function getEventCheckIns(eventId: string): Promise<EventAttendee[]> {
   const { data, error } = await supabase
     .from('event_attendees')
-    .select(`
-      *,
-      profiles!event_attendees_user_id_fkey(*)
-    `)
+    .select('*')
     .eq('event_id', eventId)
     .not('checked_in_at', 'is', null)
     .order('checked_in_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []).map((item: any) => ({
-    eventId: item.event_id,
-    userId: item.user_id,
-    status: item.status,
-    isPublic: item.is_public,
-    createdAt: item.created_at,
-    checkedInAt: item.checked_in_at,
-    user: item.profiles ? {
-      id: item.profiles.id,
-      username: item.profiles.username,
-      displayName: item.profiles.display_name,
-      avatarUrl: item.profiles.avatar_url,
-      bio: item.profiles.bio,
-      socials: {},
-      interests: item.profiles.interests || [],
-      homeCity: item.profiles.home_city || '',
-      travelCities: item.profiles.travel_cities || [],
-      profileMode: item.profiles.profile_mode || 'full',
-      organizerTier: item.profiles.organizer_tier || 'none',
-      verified: item.profiles.verified || false,
-      createdAt: item.profiles.created_at,
-    } : undefined,
-  }));
+
+  // Fetch profiles separately
+  if (data && data.length > 0) {
+    const userIds = [...new Set(data.map((item: any) => item.user_id))];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', userIds);
+
+    const profilesMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+
+    return (data || []).map((item: any) => {
+      const profile = profilesMap.get(item.user_id);
+      return {
+        eventId: item.event_id,
+        userId: item.user_id,
+        status: item.status,
+        isPublic: item.is_public,
+        createdAt: item.created_at,
+        checkedInAt: item.checked_in_at,
+        user: profile ? {
+          id: profile.id,
+          username: profile.username,
+          displayName: profile.display_name,
+          avatarUrl: profile.avatar_url,
+          bio: profile.bio,
+          socials: {},
+          interests: profile.interests || [],
+          homeCity: profile.home_city || '',
+          travelCities: profile.travel_cities || [],
+          profileMode: profile.profile_mode || 'full',
+          organizerTier: profile.organizer_tier || 'none',
+          verified: profile.verified || false,
+          createdAt: profile.created_at,
+        } : undefined,
+      };
+    });
+  }
+
+  return [];
 }
 
 export async function isCheckedIn(eventId: string, userId: string): Promise<boolean> {

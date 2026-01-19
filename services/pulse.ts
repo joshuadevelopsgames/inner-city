@@ -170,8 +170,7 @@ export async function getPulseFeed(
     .from('event_attendees')
     .select(`
       *,
-      events(*),
-      profiles!event_attendees_user_id_fkey(*)
+      events(*)
     `)
     .not('checked_in_at', 'is', null)
     .eq('is_public', true)
@@ -179,9 +178,19 @@ export async function getPulseFeed(
     .limit(20);
 
   if (!checkInsError && checkIns) {
+    // Fetch user profiles for check-ins separately
+    const checkInUserIds = [...new Set(checkIns.map((c: any) => c.user_id))];
+    const { data: checkInProfiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', checkInUserIds);
+
+    const checkInProfilesMap = new Map(checkInProfiles?.map((p: any) => [p.id, p]) || []);
+
     // Filter check-ins for events in the active city
     checkIns.forEach((checkIn: any) => {
       if (checkIn.events?.city_id === cityId) {
+        const profile = checkInProfilesMap.get(checkIn.user_id);
         const checkInPost: UserPost = {
           id: `checkin-${checkIn.id}`,
           userId: checkIn.user_id,
@@ -193,21 +202,21 @@ export async function getPulseFeed(
           commentsCount: 0,
           createdAt: checkIn.checked_in_at,
           updatedAt: checkIn.checked_in_at,
-          user: checkIn.profiles ? {
-            id: checkIn.profiles.id,
-            username: checkIn.profiles.username,
-            displayName: checkIn.profiles.display_name,
-            avatarUrl: checkIn.profiles.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${checkIn.profiles.id}`,
-            profilePhotos: checkIn.profiles.profile_photos || [],
-            bio: checkIn.profiles.bio || '',
+          user: profile ? {
+            id: profile.id,
+            username: profile.username,
+            displayName: profile.display_name,
+            avatarUrl: profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`,
+            profilePhotos: profile.profile_photos || [],
+            bio: profile.bio || '',
             socials: {},
-            interests: checkIn.profiles.interests || [],
-            homeCity: checkIn.profiles.home_city || '',
-            travelCities: checkIn.profiles.travel_cities || [],
-            profileMode: checkIn.profiles.profile_mode || 'full',
-            organizerTier: checkIn.profiles.organizer_tier || 'none',
-            verified: checkIn.profiles.verified || false,
-            createdAt: checkIn.profiles.created_at,
+            interests: profile.interests || [],
+            homeCity: profile.home_city || '',
+            travelCities: profile.travel_cities || [],
+            profileMode: profile.profile_mode || 'full',
+            organizerTier: profile.organizer_tier || 'none',
+            verified: profile.verified || false,
+            createdAt: profile.created_at,
           } : undefined,
           event: checkIn.events ? {
             id: checkIn.events.id,
