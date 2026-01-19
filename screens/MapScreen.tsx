@@ -1011,19 +1011,22 @@ export const MapScreen: React.FC = () => {
               const eventColor = getEventColor(event, theme);
               const isOfficial = event.tier === 'official';
 
+              const markerSize = 32;
+              const containerSize = markerSize + 30; // Add padding for blur effects
+
               el.innerHTML = `
-                <div class="relative flex items-center justify-center w-10 h-10 group cursor-pointer">
-                  <div class="absolute inset-0 rounded-full blur-md opacity-40 transition-all duration-300 group-hover:opacity-100" 
-                       style="background: ${eventColor}"></div>
+                <div class="relative flex items-center justify-center group cursor-pointer" style="width: ${containerSize}px; height: ${containerSize}px; padding: 15px; box-sizing: border-box;">
+                  <div class="absolute rounded-full blur-lg opacity-40 transition-all duration-300 group-hover:opacity-100 group-hover:blur-xl" 
+                       style="background: ${eventColor}; box-shadow: 0 0 ${markerSize * 1.5}px ${eventColor}60; width: ${markerSize}px; height: ${markerSize}px; left: 50%; top: 50%; transform: translate(-50%, -50%);"></div>
                   <div class="relative z-10 p-2 rounded-full border-2 border-white/10 transition-transform duration-300 group-hover:scale-110 shadow-2xl" 
-                       style="background-color: ${eventColor}">
+                       style="background-color: ${eventColor}; width: ${markerSize}px; height: ${markerSize}px; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" 
                          stroke="${isOfficial ? '#000' : theme.text}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
                       <circle cx="12" cy="10" r="3"></circle>
                     </svg>
                   </div>
-                  ${isLive ? `<div class="absolute inset-0 rounded-full animate-ping opacity-60" style="background-color: ${eventColor}"></div>` : ''}
+                  ${isLive ? `<div class="absolute rounded-full animate-ping opacity-60" style="background-color: ${eventColor}; width: ${markerSize}px; height: ${markerSize}px; left: 50%; top: 50%; transform: translate(-50%, -50%);"></div>` : ''}
                 </div>
               `;
 
