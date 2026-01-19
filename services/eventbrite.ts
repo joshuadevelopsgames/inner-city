@@ -169,10 +169,20 @@ export async function searchEventsByOrganization(
         // #endregion
         return data;
       } catch (supabaseError: any) {
+        const statusCode = supabaseError?.statusCode || supabaseError?.status || supabaseError?.context?.status;
         // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:160',message:'Edge Function failed, falling back',data:{organizationId,errorMessage:supabaseError?.message||'unknown',errorStatus:supabaseError?.status||'unknown',errorCode:supabaseError?.code||'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:160',message:'Edge Function failed, falling back',data:{organizationId,errorMessage:supabaseError?.message||'unknown',errorStatus:statusCode||'unknown',errorCode:supabaseError?.code||'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
-        // Fallback to direct API if Supabase function fails
+        
+        // If Edge Function returned 429, don't fallback to direct API (will also hit rate limit)
+        if (statusCode === 429) {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:165',message:'Edge Function rate limited, skipping fallback',data:{organizationId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+          return { events: [], pagination: { object_count: 0, page_number: 1, page_size: 0, page_count: 0, has_more_items: false } };
+        }
+        
+        // Fallback to direct API if Supabase function fails (but not for 429)
         if (import.meta.env.DEV) {
           console.warn('Supabase function failed, falling back to direct API:', supabaseError);
         }
@@ -209,7 +219,7 @@ export async function searchEventsByOrganization(
       if (response.status === 401 || response.status === 403 || response.status === 404) {
         return { events: [], pagination: { object_count: 0, page_number: 1, page_size: 0, page_count: 0, has_more_items: false } };
       }
-      // If 429 (rate limit), return empty results and log warning
+      // If 429 (rate limit), return empty results with rate limit flag
       if (response.status === 429) {
         // #region agent log
         fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:191',message:'Rate limit hit (429)',data:{organizationId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
@@ -217,7 +227,10 @@ export async function searchEventsByOrganization(
         if (import.meta.env.DEV) {
           console.warn(`Eventbrite API rate limit (429) for org ${organizationId}. Consider reducing request frequency.`);
         }
-        return { events: [], pagination: { object_count: 0, page_number: 1, page_size: 0, page_count: 0, has_more_items: false } };
+        // Return empty results with rate limit flag
+        const emptyResult: any = { events: [], pagination: { object_count: 0, page_number: 1, page_size: 0, page_count: 0, has_more_items: false } };
+        emptyResult.isRateLimit = true;
+        return emptyResult;
       }
       if (import.meta.env.DEV) {
         console.warn(`Eventbrite API error for org ${organizationId}: ${response.status} - ${errorText}`);
@@ -798,14 +811,28 @@ export async function searchEventsByCity(
   }
 
   // Add rate limiting: delay between requests to avoid 429 errors
-  const delayBetweenRequests = 200; // 200ms delay = ~5 requests/second (well under Eventbrite's limit)
+  // Eventbrite rate limit is ~1-2 requests per second, so use 1 second delay
+  const delayBetweenRequests = 1000; // 1 second delay = 1 request/second (safe for Eventbrite)
+  let consecutiveRateLimits = 0;
+  const maxConsecutiveRateLimits = 3; // Stop after 3 consecutive rate limits
   
   for (let i = 0; i < organizations.length; i++) {
     const orgId = organizations[i];
     try {
       // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:763',message:'Fetching org events',data:{cityName,orgId,orgIndex:i+1,totalOrgs:organizations.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:763',message:'Fetching org events',data:{cityName,orgId,orgIndex:i+1,totalOrgs:organizations.length,consecutiveRateLimits},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
+      
+      // Stop if we've hit too many consecutive rate limits
+      if (consecutiveRateLimits >= maxConsecutiveRateLimits) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:770',message:'Stopping due to consecutive rate limits',data:{cityName,consecutiveRateLimits,processed:i},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        if (import.meta.env.DEV) {
+          console.warn(`Eventbrite: Stopping after ${consecutiveRateLimits} consecutive rate limits. Processed ${i} of ${organizations.length} organizations.`);
+        }
+        break;
+      }
       
       // Add delay between requests (except for first one)
       if (i > 0) {
@@ -816,15 +843,36 @@ export async function searchEventsByCity(
         status: options.status || 'live',
         page_size: options.page_size || 20,
       });
-      if (response && response.events && response.events.length > 0) {
-        allEvents.push(...response.events);
-        if (import.meta.env.DEV) {
-          console.log(`Eventbrite: Found ${response.events.length} events for org ${orgId} in ${cityName}`);
+      
+      // Track rate limits from response
+      if ((response as any)?.isRateLimit) {
+        consecutiveRateLimits++;
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:785',message:'Rate limit in response',data:{cityName,orgId,consecutiveRateLimits},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+      } else {
+        // Reset consecutive rate limits on success
+        consecutiveRateLimits = 0;
+        if (response && response.events && response.events.length > 0) {
+          allEvents.push(...response.events);
+          if (import.meta.env.DEV) {
+            console.log(`Eventbrite: Found ${response.events.length} events for org ${orgId} in ${cityName}`);
+          }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Track consecutive rate limits from errors
+      if (error?.isRateLimit || error?.statusCode === 429) {
+        consecutiveRateLimits++;
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:800',message:'Rate limit error caught',data:{cityName,orgId,consecutiveRateLimits},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+      } else {
+        // Reset on non-rate-limit errors
+        consecutiveRateLimits = 0;
+      }
       // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:777',message:'Org fetch error',data:{cityName,orgId,errorMessage:error instanceof Error?error.message:'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:797',message:'Org fetch error',data:{cityName,orgId,errorMessage:error instanceof Error?error.message:'unknown',isRateLimit:error?.isRateLimit||false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
       // Log errors in development
       if (import.meta.env.DEV) {

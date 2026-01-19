@@ -56,15 +56,31 @@ export async function invokeSupabaseFunction<T = any>(
       },
     });
 
+    // Extract status code from error if available
+    let statusCode: number | undefined;
+    if (error) {
+      // Try to extract status from error context or message
+      const errorContext = (error as any).context;
+      if (errorContext?.status) {
+        statusCode = errorContext.status;
+      } else if (error.message?.match(/\b(\d{3})\b/)) {
+        const match = error.message.match(/\b(\d{3})\b/);
+        statusCode = match ? parseInt(match[1], 10) : undefined;
+      }
+    }
+
     // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:54',message:'After invoke',data:{functionName,hasError:!!error,hasData:!!data,errorMessage:error?.message||'none',errorStatus:error?.status||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:54',message:'After invoke',data:{functionName,hasError:!!error,hasData:!!data,errorMessage:error?.message||'none',errorStatus:statusCode||'none',errorContext:error?(error as any).context:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
 
     if (error) {
+      // Attach status code to error for better handling
+      (error as any).statusCode = statusCode;
+      
       // If 401, the function might not be accessible
-      if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+      if (statusCode === 401 || error.message?.includes('401') || error.message?.includes('Unauthorized')) {
         // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:58',message:'401 Unauthorized error',data:{functionName,errorMessage:error.message,errorStatus:error.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:66',message:'401 Unauthorized error',data:{functionName,errorMessage:error.message,errorStatus:statusCode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         console.error(`Function ${functionName} returned 401. Check if function allows anonymous access.`);
         console.error('Error details:', error);
