@@ -425,16 +425,32 @@ export const MapScreen: React.FC = () => {
               }
             },
             (error) => {
+              console.log('Geolocation error:', error.code, error.message);
               if (error.code === error.PERMISSION_DENIED) {
+                // User denied permission
                 setLocationPermission('denied');
                 setShowPermissionPrompt(false);
+              } else if (error.code === error.POSITION_UNAVAILABLE) {
+                // Position unavailable (common on desktop without GPS)
+                // Don't show prompt - just silently fail and let user use search
+                console.warn('Position unavailable - desktop may not have GPS. User can search for location.');
+                setLocationPermission('prompt');
+                setShowPermissionPrompt(false); // Don't show prompt for unavailable position
+              } else if (error.code === error.TIMEOUT) {
+                // Timeout - show prompt so user can try again
+                setLocationPermission('prompt');
+                setShowPermissionPrompt(true);
               } else {
-                // Other errors (timeout, etc.) - show prompt
+                // Other errors - show prompt
                 setLocationPermission('prompt');
                 setShowPermissionPrompt(true);
               }
             },
-            { timeout: 100, maximumAge: 0 }
+            { 
+              enableHighAccuracy: false, // Better for desktop - faster and less battery
+              timeout: 10000, // 10 seconds - desktop browsers need more time for IP geolocation
+              maximumAge: 300000 // 5 minutes - allow cached location for faster response
+            }
           );
         } catch (e) {
           // If we can't check, show the prompt
@@ -510,10 +526,17 @@ export const MapScreen: React.FC = () => {
           }
         },
         (error) => {
-          console.error('Error getting location:', error);
+          console.error('Error getting location:', error.code, error.message);
           if (error.code === error.PERMISSION_DENIED) {
+            // User denied permission
             setLocationPermission('denied');
             setShowPermissionPrompt(false);
+          } else if (error.code === error.POSITION_UNAVAILABLE) {
+            // Position unavailable (common on desktop without GPS)
+            console.warn('Position unavailable - desktop may not have GPS. User can search for location.');
+            setLocationPermission('prompt');
+            setShowPermissionPrompt(false); // Don't show prompt for unavailable position
+            // User can use search bar to find location
           } else if (error.code === error.TIMEOUT) {
             // Timeout - might need to check browser settings
             setLocationPermission('prompt');
@@ -526,8 +549,8 @@ export const MapScreen: React.FC = () => {
         },
         {
           enableHighAccuracy: false, // Better for desktop - faster and less battery
-          timeout: 15000, // Increased timeout for desktop browsers
-          maximumAge: 0, // Always get fresh location
+          timeout: 15000, // 15 seconds - desktop browsers need more time for IP geolocation
+          maximumAge: 300000 // 5 minutes - allow cached location for faster response
         }
       );
     } catch (err) {
