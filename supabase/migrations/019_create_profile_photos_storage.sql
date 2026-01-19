@@ -14,7 +14,8 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Create RLS policies for the bucket
 -- Allow authenticated users to upload their own photos
-CREATE POLICY IF NOT EXISTS "Users can upload their own profile photos"
+DROP POLICY IF EXISTS "Users can upload their own profile photos" ON storage.objects;
+CREATE POLICY "Users can upload their own profile photos"
 ON storage.objects
 FOR INSERT
 TO authenticated
@@ -24,7 +25,8 @@ WITH CHECK (
 );
 
 -- Allow users to update their own photos
-CREATE POLICY IF NOT EXISTS "Users can update their own profile photos"
+DROP POLICY IF EXISTS "Users can update their own profile photos" ON storage.objects;
+CREATE POLICY "Users can update their own profile photos"
 ON storage.objects
 FOR UPDATE
 TO authenticated
@@ -38,7 +40,8 @@ WITH CHECK (
 );
 
 -- Allow users to delete their own photos
-CREATE POLICY IF NOT EXISTS "Users can delete their own profile photos"
+DROP POLICY IF EXISTS "Users can delete their own profile photos" ON storage.objects;
+CREATE POLICY "Users can delete their own profile photos"
 ON storage.objects
 FOR DELETE
 TO authenticated
@@ -48,7 +51,8 @@ USING (
 );
 
 -- Allow public read access (since bucket is public)
-CREATE POLICY IF NOT EXISTS "Public can view profile photos"
+DROP POLICY IF EXISTS "Public can view profile photos" ON storage.objects;
+CREATE POLICY "Public can view profile photos"
 ON storage.objects
 FOR SELECT
 TO public
