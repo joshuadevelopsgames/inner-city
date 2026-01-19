@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getEventAttendees, setEventAttendance, removeEventAttendance, getUserEventAttendance } from '../services/social';
 import { EventAttendee } from '../types';
+import { getOptimizedImageUrl } from '../utils/imageOptimization';
 
 const TICKET_TIERS = [
   { id: 'early', name: 'Early Bird', price: '€15.00', perks: 'Entry before 23:00' },
@@ -152,7 +153,7 @@ export const EventDetail: React.FC = () => {
       {/* Header Overlay */}
       <div className="relative h-[65vh]">
         <img 
-          src={getOptimizedImageUrl(event.mediaUrls[0], 'hero')} 
+          src={event.mediaUrls && event.mediaUrls[0] ? getOptimizedImageUrl(event.mediaUrls[0], 'hero') : 'https://picsum.photos/800/600'} 
           alt={event.title} 
           className="w-full h-full object-cover"
           loading="eager"
