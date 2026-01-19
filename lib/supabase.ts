@@ -32,10 +32,17 @@ export async function invokeSupabaseFunction<T = any>(
   functionName: string,
   body?: any
 ): Promise<T> {
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:35',message:'invokeSupabaseFunction called',data:{functionName,hasBody:!!body,bodyKeys:body?Object.keys(body):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   try {
     // Always include the anon key explicitly - Supabase Edge Functions require authentication
     // Get current session for user auth, but always include anon key as fallback
     const { data: { session } } = await supabase.auth.getSession();
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:42',message:'Before invoke',data:{functionName,hasSession:!!session,hasAnonKey:!!supabaseAnonKey,anonKeyLength:supabaseAnonKey?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     
     const { data, error } = await supabase.functions.invoke(functionName, {
       body,
@@ -49,9 +56,16 @@ export async function invokeSupabaseFunction<T = any>(
       },
     });
 
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:54',message:'After invoke',data:{functionName,hasError:!!error,hasData:!!data,errorMessage:error?.message||'none',errorStatus:error?.status||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     if (error) {
       // If 401, the function might not be accessible
       if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:58',message:'401 Unauthorized error',data:{functionName,errorMessage:error.message,errorStatus:error.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         console.error(`Function ${functionName} returned 401. Check if function allows anonymous access.`);
         console.error('Error details:', error);
       }
@@ -60,6 +74,9 @@ export async function invokeSupabaseFunction<T = any>(
 
     return data as T;
   } catch (error: any) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabase.ts:66',message:'invokeSupabaseFunction error',data:{functionName,errorMessage:error?.message||'unknown',errorStatus:error?.status||'unknown',errorCode:error?.code||'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     console.error(`Error calling Supabase function ${functionName}:`, error);
     throw error;
   }

@@ -134,8 +134,15 @@ export async function searchEventsByOrganization(
     page?: number;
   } = {}
 ): Promise<EventbriteSearchResponse> {
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:137',message:'searchEventsByOrganization called',data:{organizationId,pageSize:options.page_size,page:options.page,status:options.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  
   const token = getApiToken();
   if (!token) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:141',message:'No API token found',data:{organizationId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     // Return empty results instead of throwing
     return { events: [], pagination: { object_count: 0, page_number: 1, page_size: 0, page_count: 0, has_more_items: false } };
   }
@@ -145,6 +152,9 @@ export async function searchEventsByOrganization(
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     
     if (supabaseUrl) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:149',message:'Attempting Edge Function call',data:{organizationId,supabaseUrl:supabaseUrl.substring(0,30)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       // Use Supabase Edge Function (solves CORS)
       const { invokeSupabaseFunction } = await import('../lib/supabase');
       try {
@@ -154,8 +164,14 @@ export async function searchEventsByOrganization(
           page: options.page || 1,
           status: options.status || 'live',
         });
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:157',message:'Edge Function success',data:{organizationId,eventCount:data?.events?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         return data;
-      } catch (supabaseError) {
+      } catch (supabaseError: any) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:160',message:'Edge Function failed, falling back',data:{organizationId,errorMessage:supabaseError?.message||'unknown',errorStatus:supabaseError?.status||'unknown',errorCode:supabaseError?.code||'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         // Fallback to direct API if Supabase function fails
         if (import.meta.env.DEV) {
           console.warn('Supabase function failed, falling back to direct API:', supabaseError);
@@ -164,6 +180,9 @@ export async function searchEventsByOrganization(
     }
 
     // Fallback: Direct API call
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:167',message:'Using direct API fallback',data:{organizationId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     const params = new URLSearchParams({
       token: token.trim(),
       page_size: String(options.page_size || 50),
@@ -177,12 +196,29 @@ export async function searchEventsByOrganization(
 
     const response = await fetch(`${API_BASE_URL}/organizations/${organizationId}/events/?${params.toString()}`);
     
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:180',message:'Direct API response received',data:{organizationId,status:response.status,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
     if (!response.ok) {
+      // #region agent log
+      const errorText = await response.text().catch(() => '');
+      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:184',message:'Direct API error',data:{organizationId,status:response.status,errorText:errorText.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       // If 401 (unauthorized), 403 (forbidden), or 404 (not found), fail silently
       if (response.status === 401 || response.status === 403 || response.status === 404) {
         return { events: [], pagination: { object_count: 0, page_number: 1, page_size: 0, page_count: 0, has_more_items: false } };
       }
-      const errorText = await response.text();
+      // If 429 (rate limit), return empty results and log warning
+      if (response.status === 429) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:191',message:'Rate limit hit (429)',data:{organizationId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        if (import.meta.env.DEV) {
+          console.warn(`Eventbrite API rate limit (429) for org ${organizationId}. Consider reducing request frequency.`);
+        }
+        return { events: [], pagination: { object_count: 0, page_number: 1, page_size: 0, page_count: 0, has_more_items: false } };
+      }
       if (import.meta.env.DEV) {
         console.warn(`Eventbrite API error for org ${organizationId}: ${response.status} - ${errorText}`);
       }
@@ -190,6 +226,9 @@ export async function searchEventsByOrganization(
     }
 
     const data = await response.json();
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:193',message:'Direct API success',data:{organizationId,eventCount:data?.events?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     return data as EventbriteSearchResponse;
   } catch (error) {
     if (import.meta.env.DEV) {
@@ -758,8 +797,21 @@ export async function searchEventsByCity(
     return [];
   }
 
-  for (const orgId of organizations) {
+  // Add rate limiting: delay between requests to avoid 429 errors
+  const delayBetweenRequests = 200; // 200ms delay = ~5 requests/second (well under Eventbrite's limit)
+  
+  for (let i = 0; i < organizations.length; i++) {
+    const orgId = organizations[i];
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:763',message:'Fetching org events',data:{cityName,orgId,orgIndex:i+1,totalOrgs:organizations.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      // Add delay between requests (except for first one)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, delayBetweenRequests));
+      }
+      
       const response = await searchEventsByOrganization(orgId, {
         status: options.status || 'live',
         page_size: options.page_size || 20,
@@ -771,6 +823,9 @@ export async function searchEventsByCity(
         }
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/500c6263-d9c5-4196-a88c-cf974eeb7593',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'eventbrite.ts:777',message:'Org fetch error',data:{cityName,orgId,errorMessage:error instanceof Error?error.message:'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       // Log errors in development
       if (import.meta.env.DEV) {
         console.warn(`Failed to fetch events for organization ${orgId} in ${cityName}:`, error);
