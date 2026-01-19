@@ -370,8 +370,44 @@ const EventCard: React.FC<{ event: Event }> = ({ event }) => {
   );
 };
 
+// Event type keywords for filtering
+const EVENT_TYPE_KEYWORDS: Record<string, string[]> = {
+  'all': [],
+  'concerts': ['music', 'concert', 'live music', 'band', 'artist', 'performance', 'gig', 'show'],
+  'comedy': ['comedy', 'stand-up', 'improv', 'humor', 'jokes', 'comic', 'laugh'],
+  'user-events': ['hangout', 'meetup', 'social', 'friends', 'community', 'chill', 'gathering'],
+  'nightlife': ['nightlife', 'club', 'dance', 'party', 'dj', 'electronic', 'nightclub', 'bar'],
+  'art-culture': ['art', 'culture', 'gallery', 'exhibition', 'museum', 'theater', 'theatre', 'arts'],
+  'sports': ['sports', 'game', 'match', 'fitness', 'athletic', 'sport', 'competition'],
+  'food-drink': ['food', 'drink', 'dining', 'restaurant', 'bar', 'culinary', 'cuisine', 'tasting'],
+  'workshops': ['workshop', 'class', 'learning', 'education', 'seminar', 'course', 'training'],
+  'raves': ['rave', 'techno', 'underground', 'warehouse', 'electronic music', 'edm', 'house music'],
+};
+
+const filterEventsByType = (events: Event[], eventType: string): Event[] => {
+  if (eventType === 'all') return events;
+  
+  // Special handling for user events (hangouts) - these are events created by users, not from APIs
+  if (eventType === 'user-events') {
+    return events.filter(event => 
+      event.organizerId !== 'ticketmaster' && 
+      event.organizerId !== 'eventbrite' &&
+      !event.ticketmasterId &&
+      !event.eventbriteId
+    );
+  }
+  
+  const keywords = EVENT_TYPE_KEYWORDS[eventType] || [];
+  if (keywords.length === 0) return events;
+  
+  return events.filter(event => {
+    const searchText = `${event.title} ${event.shortDesc} ${event.longDesc} ${event.categories?.join(' ')} ${event.subcategories?.join(' ')}`.toLowerCase();
+    return keywords.some(keyword => searchText.includes(keyword.toLowerCase()));
+  });
+};
+
 export const Feed: React.FC = () => {
-  const { events, rankedEvents, activeCity, theme, user } = useApp();
+  const { events, rankedEvents, activeCity, activeEventType, theme, user } = useApp();
   const [activeMood, setActiveMood] = useState('All');
   const [posts, setPosts] = useState<UserPost[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
@@ -379,21 +415,22 @@ export const Feed: React.FC = () => {
   
   const moods = ['All', 'Deep & Dark', 'High Energy', 'Soulful', 'Experimental'];
   const cityEvents = events.filter(e => e.cityId === activeCity.id);
+  const filteredCityEvents = useMemo(() => filterEventsByType(cityEvents, activeEventType), [cityEvents, activeEventType]);
   const cityPulses = MOCK_CITY_PULSES.filter(p => p.cityId === activeCity.id);
   const isLight = theme.background === '#FFFFFF';
 
-  // Load posts on mount and when city changes
+  // Load posts on mount and when city or event type changes
   useEffect(() => {
     loadPosts();
-  }, [activeCity.id]);
+  }, [activeCity.id, activeEventType]);
 
   const loadPosts = async () => {
     setIsLoadingPosts(true);
     try {
       const feedPosts = await getFeedPosts(user?.id);
-      // Filter posts by city (if they have an event in this city)
+      // Filter posts by city and event type (if they have an event)
       const cityPosts = feedPosts.filter(post => 
-        !post.eventId || cityEvents.some(e => e.id === post.eventId)
+        !post.eventId || filteredCityEvents.some(e => e.id === post.eventId)
       );
       setPosts(cityPosts);
     } catch (error) {
@@ -408,32 +445,37 @@ export const Feed: React.FC = () => {
   const displayEvents = useMemo(() => {
     if (rankedEvents) {
       // Show priority events first, then background events with reduced opacity
+      const priority = filterEventsByType(rankedEvents.priority.filter(e => e.cityId === activeCity.id), activeEventType);
+      const background = filterEventsByType(rankedEvents.background.filter(e => e.cityId === activeCity.id), activeEventType);
       return {
-        priority: rankedEvents.priority.filter(e => e.cityId === activeCity.id),
-        background: rankedEvents.background.filter(e => e.cityId === activeCity.id),
+        priority,
+        background,
       };
     }
     return {
-      priority: cityEvents,
+      priority: filteredCityEvents,
       background: [],
     };
-  }, [rankedEvents, cityEvents, activeCity.id]);
+  }, [rankedEvents, filteredCityEvents, activeCity.id, activeEventType]);
 
   return (
     <div className="pb-10 pt-4">
       <div className="px-6 mb-8 flex items-end justify-between gap-4">
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0" style={{ maxWidth: 'calc(100% - 120px)' }}>
           <span className="text-[10px] font-black tracking-[0.4em] uppercase opacity-40 block mb-1">Gateway // {activeCity.country}</span>
           <h2 
             className={`font-black tracking-tighter leading-none uppercase italic ${activeCity.name.length > 18 ? 'truncate' : ''}`}
-            style={{ fontSize: 'clamp(1.5rem, 5vw + 1rem, 3rem)' }}
+            style={{ 
+              fontSize: 'clamp(1.5rem, 4vw + 0.5rem, 3rem)',
+              lineHeight: '1',
+            }}
           >
             {activeCity.name}
           </h2>
         </div>
-        <div className="flex -space-x-3 mb-1 flex-shrink-0">
+        <div className="flex -space-x-3 mb-1 flex-shrink-0" style={{ minWidth: '100px' }}>
            {[1,2,3].map(i => (
-             <img key={i} src={`https://picsum.photos/seed/face${i}/50/50`} className="w-8 h-8 rounded-full border-2" style={{ borderColor: theme.background }} />
+             <img key={i} src={`https://picsum.photos/seed/face${i}/50/50`} className="w-8 h-8 rounded-full border-2 flex-shrink-0" style={{ borderColor: theme.background }} />
            ))}
         </div>
       </div>

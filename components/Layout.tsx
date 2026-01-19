@@ -2,15 +2,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Search, Plus, Bookmark, User, ChevronDown, Bell, Ticket as TicketIcon, MapPin } from 'lucide-react';
+import { Home, Search, Plus, Bookmark, User, ChevronDown, Bell, Ticket as TicketIcon, MapPin, Music, Laugh, Users, Moon, Palette, Trophy, UtensilsCrossed, GraduationCap, Zap, Filter } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MOCK_CITIES } from '../mockData';
+import { EventType } from '../types';
+
+const EVENT_TYPES: Array<{ id: EventType; label: string; icon: React.ComponentType<any>; keywords: string[] }> = [
+  { id: 'all', label: 'All Events', icon: Filter, keywords: [] },
+  { id: 'concerts', label: 'Concerts', icon: Music, keywords: ['music', 'concert', 'live music', 'band', 'artist', 'performance'] },
+  { id: 'comedy', label: 'Comedy', icon: Laugh, keywords: ['comedy', 'stand-up', 'improv', 'humor', 'jokes'] },
+  { id: 'user-events', label: 'Hangouts', icon: Users, keywords: ['hangout', 'meetup', 'social', 'friends', 'community'] },
+  { id: 'nightlife', label: 'Nightlife', icon: Moon, keywords: ['nightlife', 'club', 'dance', 'party', 'dj', 'electronic'] },
+  { id: 'art-culture', label: 'Art & Culture', icon: Palette, keywords: ['art', 'culture', 'gallery', 'exhibition', 'museum', 'theater'] },
+  { id: 'sports', label: 'Sports', icon: Trophy, keywords: ['sports', 'game', 'match', 'fitness', 'athletic'] },
+  { id: 'food-drink', label: 'Food & Drink', icon: UtensilsCrossed, keywords: ['food', 'drink', 'dining', 'restaurant', 'bar', 'culinary'] },
+  { id: 'workshops', label: 'Workshops', icon: GraduationCap, keywords: ['workshop', 'class', 'learning', 'education', 'seminar'] },
+  { id: 'raves', label: 'Raves', icon: Zap, keywords: ['rave', 'techno', 'underground', 'warehouse', 'electronic music'] },
+];
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { theme, activeCity, setActiveCity } = useApp();
+  const { theme, activeCity, activeEventType, setActiveEventType } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
-  const [showCityDropdown, setShowCityDropdown] = useState(false);
+  const [showEventTypeDropdown, setShowEventTypeDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const mainContentRef = useRef<HTMLElement>(null);
@@ -218,23 +232,26 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowCityDropdown(false);
+        setShowEventTypeDropdown(false);
       }
     };
 
-    if (showCityDropdown) {
+    if (showEventTypeDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showCityDropdown]);
+  }, [showEventTypeDropdown]);
 
-  const handleCitySelect = (city: typeof MOCK_CITIES[0]) => {
-    setActiveCity(city);
-    setShowCityDropdown(false);
+  const handleEventTypeSelect = (type: EventType) => {
+    setActiveEventType(type);
+    setShowEventTypeDropdown(false);
   };
+  
+  const currentEventType = EVENT_TYPES.find(t => t.id === activeEventType) || EVENT_TYPES[0];
+  const EventTypeIcon = currentEventType.icon;
 
   // Ensure page starts at top on load (fixes PWA home screen issue)
   useEffect(() => {
@@ -275,22 +292,23 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           />
           <div className="relative mt-2" ref={dropdownRef}>
             <button
-              onClick={() => setShowCityDropdown(!showCityDropdown)}
+              onClick={() => setShowEventTypeDropdown(!showEventTypeDropdown)}
               className="flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer active:scale-95 transition-transform" 
               style={{ backgroundColor: theme.surface, border: `1px solid ${theme.border}` }}
             >
-              <span className="text-[10px] font-black tracking-widest uppercase">{activeCity.name}</span>
+              <EventTypeIcon size={14} color={theme.accent} strokeWidth={2.5} />
+              <span className="text-[10px] font-black tracking-widest uppercase">{currentEventType.label}</span>
               <ChevronDown 
                 size={12} 
                 color={theme.accent} 
                 strokeWidth={3}
-                className={`transition-transform duration-200 ${showCityDropdown ? 'rotate-180' : ''}`}
+                className={`transition-transform duration-200 ${showEventTypeDropdown ? 'rotate-180' : ''}`}
               />
             </button>
 
-            {/* City Dropdown */}
+            {/* Event Type Dropdown */}
             <AnimatePresence>
-              {showCityDropdown && (
+              {showEventTypeDropdown && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -299,34 +317,34 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   style={{ borderColor: theme.border }}
                 >
                   <div className="max-h-80 overflow-y-auto no-scrollbar">
-                    {MOCK_CITIES.map((city) => (
-                      <button
-                        key={city.id}
-                        onClick={() => handleCitySelect(city)}
-                        className={`w-full px-4 py-3 text-left hover:bg-white/5 transition-colors border-b border-white/5 last:border-b-0 flex items-center gap-3 group ${
-                          city.id === activeCity.id ? 'bg-white/10' : ''
-                        }`}
-                      >
-                        <MapPin 
-                          size={16} 
-                          className={`flex-shrink-0 ${city.id === activeCity.id ? 'opacity-100' : 'opacity-40'}`} 
-                          color={city.id === activeCity.id ? theme.accent : 'white'} 
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[10px] font-black uppercase tracking-widest truncate ${
-                            city.id === activeCity.id ? 'text-white' : 'text-white/80'
-                          }`}>
-                            {city.name}
-                          </p>
-                          <p className="text-[9px] font-medium opacity-60 text-white mt-0.5 truncate">
-                            {city.country}
-                          </p>
-                        </div>
-                        {city.id === activeCity.id && (
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.accent }} />
-                        )}
-                      </button>
-                    ))}
+                    {EVENT_TYPES.map((eventType) => {
+                      const Icon = eventType.icon;
+                      return (
+                        <button
+                          key={eventType.id}
+                          onClick={() => handleEventTypeSelect(eventType.id)}
+                          className={`w-full px-4 py-3 text-left hover:bg-white/5 transition-colors border-b border-white/5 last:border-b-0 flex items-center gap-3 group ${
+                            eventType.id === activeEventType ? 'bg-white/10' : ''
+                          }`}
+                        >
+                          <Icon 
+                            size={16} 
+                            className={`flex-shrink-0 ${eventType.id === activeEventType ? 'opacity-100' : 'opacity-40'}`} 
+                            color={eventType.id === activeEventType ? theme.accent : 'white'} 
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest truncate ${
+                              eventType.id === activeEventType ? 'text-white' : 'text-white/80'
+                            }`}>
+                              {eventType.label}
+                            </p>
+                          </div>
+                          {eventType.id === activeEventType && (
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.accent }} />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </motion.div>
               )}

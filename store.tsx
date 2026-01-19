@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { User, City, Event, ThemeTokens, Notification, Ticket } from './types';
+import { User, City, Event, ThemeTokens, Notification, Ticket, EventType } from './types';
 import { MOCK_USER, MOCK_CITIES, MOCK_EVENTS, MOCK_TICKETS } from './mockData';
 import { THEMES } from './theme';
 import { 
@@ -16,6 +16,8 @@ interface AppContextType {
   user: User | null;
   activeCity: City;
   setActiveCity: (city: City | ((prev: City) => City)) => void;
+  activeEventType: EventType;
+  setActiveEventType: (type: EventType) => void;
   events: Event[];
   tickets: Ticket[];
   addTicket: (ticket: Ticket) => void;
@@ -94,6 +96,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
   };
+  const [activeEventType, setActiveEventTypeState] = useState<EventType>(() => {
+    try {
+      const saved = localStorage.getItem('inner_city_event_type');
+      if (saved && ['all', 'concerts', 'comedy', 'user-events', 'nightlife', 'art-culture', 'sports', 'food-drink', 'workshops', 'raves'].includes(saved)) {
+        return saved as EventType;
+      }
+    } catch (e) {
+      console.error('Failed to load event type from localStorage:', e);
+    }
+    return 'all';
+  });
+  
+  const setActiveEventType = (type: EventType) => {
+    setActiveEventTypeState(type);
+    try {
+      localStorage.setItem('inner_city_event_type', type);
+    } catch (e) {
+      console.error('Failed to save event type to localStorage:', e);
+    }
+  };
+  
   const [events, setEvents] = useState<Event[]>(MOCK_EVENTS);
   const [rankedEvents, setRankedEvents] = useState<RankedEvents | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>(MOCK_TICKETS.map(t => ({ ...t, source: 'native' })));
@@ -584,7 +607,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           categories: ['music'], // Start with just music for faster load
           limit: 15, // Reduced for faster initial load
           includeTicketmaster: true,
-          includeEventbrite: false, // Skip Eventbrite on initial load for speed
+          includeEventbrite: !!import.meta.env.VITE_EVENTBRITE_API_TOKEN, // Enable Eventbrite if token is available
         });
 
         // Filter to only upcoming events and sort by date
@@ -699,6 +722,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     user,
     activeCity,
     setActiveCity, // This is now the wrapper function that persists to localStorage
+    activeEventType,
+    setActiveEventType,
     events,
     rankedEvents,
     tickets,

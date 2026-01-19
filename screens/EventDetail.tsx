@@ -24,7 +24,7 @@ const TICKET_TIERS = [
 export const EventDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { events, theme, addTicket, user, activeCity, isTicketmasterConnected } = useApp();
+  const { events, theme, addTicket, user, activeCity, isTicketmasterConnected, toggleSaveEvent, savedEventIds } = useApp();
   const event = events.find(e => e.id === id);
 
   const [showTicketing, setShowTicketing] = useState(false);
@@ -71,7 +71,7 @@ export const EventDetail: React.FC = () => {
     }
   };
 
-  const handleRSVP = async (status: 'going' | 'interested' | 'maybe') => {
+  const handleRSVP = async (status: 'going' | 'interested') => {
     if (!user || !event || !id) return;
     
     try {
@@ -80,10 +80,20 @@ export const EventDetail: React.FC = () => {
         await removeEventAttendance(id, user.id);
         setUserAttendance(null);
         await loadAttendees();
+        // If removing interested, also remove from saves
+        if (status === 'interested') {
+          toggleSaveEvent(id);
+        }
       } else {
         await setEventAttendance(id, user.id, status, true);
         setUserAttendance({ eventId: id, userId: user.id, status, isPublic: true, createdAt: new Date().toISOString() });
         await loadAttendees();
+        // If marking interested, also add to saves
+        if (status === 'interested') {
+          if (!savedEventIds.includes(id)) {
+            toggleSaveEvent(id);
+          }
+        }
       }
     } catch (error) {
       console.error('Error setting attendance:', error);
@@ -209,7 +219,7 @@ export const EventDetail: React.FC = () => {
           >
             Access Key Gateway <Zap size={20} fill="currentColor" />
           </NeonButton>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <button 
               onClick={() => user && handleRSVP('going')}
               className={`py-5 rounded-2xl font-black text-xs uppercase tracking-widest border active:scale-95 transition-all flex items-center justify-center gap-2 ${
@@ -241,21 +251,6 @@ export const EventDetail: React.FC = () => {
             >
               <Heart size={16} />
               Interested
-            </button>
-            <button 
-              onClick={() => user && handleRSVP('maybe')}
-              className={`py-5 rounded-2xl font-black text-xs uppercase tracking-widest border active:scale-95 transition-all ${
-                userAttendance?.status === 'maybe' 
-                  ? 'bg-primary border-primary' 
-                  : 'border-white/10 bg-white/5'
-              }`}
-              style={userAttendance?.status === 'maybe' ? { 
-                backgroundColor: theme.accent, 
-                borderColor: theme.accent,
-                color: theme.background === '#FFFFFF' ? '#FFF' : '#000'
-              } : {}}
-            >
-              Maybe
             </button>
           </div>
         </div>

@@ -84,15 +84,27 @@ export function calculateEventScore(event: Event, user: User | null): number {
   }
 
   // Boost score for events with good engagement
+  // Include rsvpInterested (saves) in engagement calculation for popularity ranking
   const totalEngagement = (event.counts.likes || 0) + 
                          (event.counts.saves || 0) + 
-                         (event.counts.rsvpGoing || 0);
+                         (event.counts.rsvpGoing || 0) +
+                         (event.counts.rsvpInterested || 0);
   if (totalEngagement > 50) {
     score += 3;
     reasons.push('High engagement');
   } else if (totalEngagement > 20) {
     score += 1;
     reasons.push('Moderate engagement');
+  }
+  
+  // Extra boost for events with many saves/interested (popularity signal)
+  const savesAndInterested = (event.counts.saves || 0) + (event.counts.rsvpInterested || 0);
+  if (savesAndInterested > 30) {
+    score += 2;
+    reasons.push('Highly saved/interested');
+  } else if (savesAndInterested > 10) {
+    score += 1;
+    reasons.push('Popular event');
   }
 
   // Boost score for events happening soon (within 7 days)

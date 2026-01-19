@@ -3,6 +3,7 @@ export type Tier = 'community' | 'official';
 export type ContentStatus = 'active' | 'under_review' | 'removed';
 export type TicketStatus = 'active' | 'used' | 'expired';
 export type TicketSource = 'native' | 'ticketmaster';
+export type EventType = 'all' | 'concerts' | 'comedy' | 'user-events' | 'nightlife' | 'art-culture' | 'sports' | 'food-drink' | 'workshops' | 'raves';
 
 export interface User {
   id: string;
