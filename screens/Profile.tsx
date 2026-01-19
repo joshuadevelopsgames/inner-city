@@ -315,20 +315,34 @@ export const Profile: React.FC = () => {
       .map(i => i.trim())
       .filter(i => i.length > 0);
 
-    await updateUser({
-      displayName: editForm.displayName,
-      bio: editForm.bio,
-      profilePhotos: editForm.profilePhotos,
-      avatarUrl: editForm.profilePhotos[0] || user.avatarUrl,
-      socials: {
-        twitter: editForm.twitter,
-        instagram: editForm.instagram,
-      },
-      interests: interestsArray,
-      homeCity: editForm.homeCity,
-    });
+    // Filter out any empty photo URLs and ensure we have at least one photo
+    const validPhotos = editForm.profilePhotos.filter((url: string) => url && url.trim() !== '');
+    const profilePhotos = validPhotos.length > 0 ? validPhotos : [user.avatarUrl];
 
-    setShowEditModal(false);
+    try {
+      await updateUser({
+        displayName: editForm.displayName,
+        bio: editForm.bio,
+        profilePhotos: profilePhotos,
+        avatarUrl: profilePhotos[0] || user.avatarUrl,
+        socials: {
+          twitter: editForm.twitter,
+          instagram: editForm.instagram,
+        },
+        interests: interestsArray,
+        homeCity: editForm.homeCity,
+      });
+
+      setShowEditModal(false);
+      
+      // Refresh the profile to show updated photos
+      if (isViewingOtherProfile) {
+        loadUserProfile();
+      }
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      alert('Failed to save profile. Please try again.');
+    }
   };
 
   if (!user) {
