@@ -602,8 +602,9 @@ export const Feed: React.FC = () => {
           <h2 
             className={`font-black tracking-tighter leading-none uppercase italic ${activeCity.name.length > 18 ? 'truncate' : ''}`}
             style={{ 
-              fontSize: 'clamp(1.5rem, 4vw + 0.5rem, 3rem)',
+              fontSize: 'clamp(1.5rem, 4vw + 0.5rem, 2.5rem)',
               lineHeight: '1',
+              maxWidth: '100%',
             }}
           >
             {activeCity.name}

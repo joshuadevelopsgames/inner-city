@@ -267,7 +267,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       {/* Header */}
       {location.pathname !== '/onboarding' && (
         <header 
-          className="sticky top-0 z-40 px-6 flex justify-between items-center ios-glass" 
+          className="sticky top-0 z-40 px-6 flex justify-between items-center ios-glass w-full max-w-md mx-auto" 
           style={{ 
             backgroundColor: theme.background,
             borderBottom: `1px solid ${theme.border}40`,
@@ -402,7 +402,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       {/* Minimalist Bottom Bar */}
       {location.pathname !== '/onboarding' && !location.pathname.includes('/chat') && (
         <nav 
-          className={`fixed bottom-0 left-0 right-0 z-50 border-t ${isLight ? 'bg-white' : 'bg-black'}`}
+          className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 border-t ${isLight ? 'bg-white' : 'bg-black'}`}
           style={{ borderColor: isLight ? '#f3f4f6' : '#1f2937' }}
         >
           <div className="flex justify-around items-center h-20 safe-area-bottom px-2">
